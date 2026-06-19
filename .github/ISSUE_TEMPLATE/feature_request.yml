@@ -1,0 +1,37 @@
+name: Feature request / 功能建议
+description: Propose a new contract rule, adapter, or report improvement / 建议新的契约规则、适配器或报告改进
+title: "[feature / 建议]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: "Tell us the problem first, then the proposed change. / 请先说明问题，再说明建议。"
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement / 问题描述
+      description: What pain point are you trying to solve? / 你想解决什么痛点？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Change / 建议方案
+      description: What should TensorFence do differently? / 你希望 TensorFence 怎么做？
+    validations:
+      required: true
+  - type: input
+    id: scope
+    attributes:
+      label: Scope / 影响范围
+      description: contract, adapter, compare, or report / 契约、适配、对比或报告
+    validations:
+      required: true
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Why It Matters / 价值说明
+      description: Why should this be prioritized? / 为什么值得优先做？
+    validations:
+      required: false
+

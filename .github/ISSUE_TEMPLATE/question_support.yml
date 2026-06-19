@@ -1,0 +1,30 @@
+name: Question / 使用咨询
+description: Ask for help with configuration, reproduction, or interpretation / 咨询配置、复现或结果解读
+title: "[question / 咨询]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: "Use this for usage questions. / 用于使用咨询。"
+  - type: textarea
+    id: question
+    attributes:
+      label: Question / 问题
+      description: What do you want to know? / 你想确认什么？
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context / 背景
+      description: Include your contract, command, and output if relevant. / 如相关，请附上契约、命令和输出。
+    validations:
+      required: false
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected / 期望
+      description: What did you expect to happen? / 你原本期望什么？
+    validations:
+      required: false
+

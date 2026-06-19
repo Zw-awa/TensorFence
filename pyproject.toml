@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tensorfence"
+version = "0.1.0"
+description = "Contract-first diagnostics for YOLO/PP -> ONNX -> RKNN export chains"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.12"
+dependencies = [
+  "numpy>=2.0",
+  "PyYAML>=6.0",
+  "pydantic>=2.7",
+]
+keywords = ["yolo", "rknn", "onnx", "export", "diagnostics"]
+classifiers = [
+  "Programming Language :: Python :: 3.12",
+  "Operating System :: OS Independent",
+  "License :: OSI Approved :: Apache Software License",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+tensorfence = "tensorfence.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

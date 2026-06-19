@@ -1,0 +1,86 @@
+name: Bug report / 问题报告
+description: Report a contract, validation, or diff issue / 报告契约、校验或差分问题
+title: "[bug / 问题]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "Please describe the problem clearly. / 请尽量清晰描述问题。"
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary / 问题概述
+      description: What went wrong? / 出现了什么问题？
+    validations:
+      required: true
+  - type: input
+    id: model_family
+    attributes:
+      label: Model Family / 模型系列
+      description: YOLOv5, YOLOv8, PP-YOLOE, etc. / 例如 YOLOv5、YOLOv8、PP-YOLOE
+    validations:
+      required: true
+  - type: input
+    id: source_framework
+    attributes:
+      label: Source Framework / 源框架
+      description: PyTorch, Paddle, etc. / 例如 PyTorch、Paddle
+    validations:
+      required: true
+  - type: input
+    id: onnx_version
+    attributes:
+      label: ONNX Version / ONNX 版本
+      description: If applicable / 如适用
+    validations:
+      required: false
+  - type: input
+    id: rknn_version
+    attributes:
+      label: RKNN Version / RKNN 版本
+      description: Toolkit/runtime version / 工具链或运行时版本
+    validations:
+      required: false
+  - type: input
+    id: target_device
+    attributes:
+      label: Target Device / 目标设备
+      description: RK3566, RK3588, etc. / 例如 RK3566、RK3588
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Contract / 契约
+      description: Paste the minimal model contract YAML. / 请粘贴最小契约 YAML。
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction Steps / 复现步骤
+      description: Include commands, versions, and the stage where drift appears. / 请包含命令、版本以及开始漂移的阶段。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior / 期望行为
+      description: What should TensorFence have reported? / 你希望 TensorFence 报告什么？
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior / 实际行为
+      description: What happened instead? / 实际发生了什么？
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / 日志
+      description: Paste relevant output, screenshots, or trace snippets. / 粘贴相关输出、截图或日志片段。
+    validations:
+      required: false
+

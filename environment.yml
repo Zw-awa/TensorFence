@@ -1,0 +1,11 @@
+name: tensorfence
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - numpy>=2.0
+  - pyyaml>=6.0
+  - pydantic>=2.7
+  - pytest>=8.0
+
