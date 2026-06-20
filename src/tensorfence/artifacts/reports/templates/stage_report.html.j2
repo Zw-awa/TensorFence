@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Stage Compare Report - {{ report.contract_name }}</title>
+    <style>
+      body { font-family: Segoe UI, Arial, sans-serif; margin: 2rem; color: #1f2937; }
+      table { border-collapse: collapse; width: 100%; margin-bottom: 1.5rem; }
+      th, td { border: 1px solid #d1d5db; padding: 0.5rem; text-align: left; vertical-align: top; }
+      th { background: #f3f4f6; }
+      code { background: #f3f4f6; padding: 0.1rem 0.25rem; }
+      .aligned { color: #166534; }
+      .drift, .shape_mismatch { color: #b91c1c; }
+      .warning { color: #92400e; }
+    </style>
+  </head>
+  <body>
+    <h1>Stage Compare Report: {{ report.contract_name }}</h1>
+    <p>Image: <code>{{ report.image_path }}</code></p>
+    <p>Input tensor: <code>{{ report.input_tensor_shape }}</code> <code>{{ report.input_tensor_dtype }}</code></p>
+
+    <h2>Stages</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Stage</th>
+          <th>Source</th>
+          <th>Status</th>
+          <th>Outputs</th>
+          <th>Warnings</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for stage in report.stages %}
+        <tr>
+          <td><code>{{ stage.stage }}</code></td>
+          <td><code>{{ stage.source_kind }}</code><br/><code>{{ stage.source_path }}</code></td>
+          <td>{{ 'available' if stage.available else 'skipped' }}</td>
+          <td>
+            {% for output in stage.outputs %}
+            <div><code>{{ output.name }}</code> shape=<code>{{ output.shape }}</code> dtype=<code>{{ output.dtype }}</code></div>
+            {% endfor %}
+          </td>
+          <td>
+            {% for warning in stage.warnings %}
+            <div class="warning">{{ warning }}</div>
+            {% endfor %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h2>Pair Diffs</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Pair</th>
+          <th>Tensor</th>
+          <th>Status</th>
+          <th>Metrics</th>
+          <th>Reasons</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for diff in report.pair_diffs %}
+        <tr>
+          <td><code>{{ diff.left_stage }}-&gt;{{ diff.right_stage }}</code></td>
+          <td><code>{{ diff.tensor_name }}</code></td>
+          <td class="{{ diff.status }}">{{ diff.status }}</td>
+          <td>
+            <div>max_abs=<code>{{ diff.max_abs_error }}</code></div>
+            <div>mean_abs=<code>{{ diff.mean_abs_error }}</code></div>
+            <div>rms=<code>{{ diff.rms_error }}</code></div>
+            <div>cosine=<code>{{ diff.cosine_similarity }}</code></div>
+          </td>
+          <td>
+            {% for reason in diff.reasons %}
+            <div>{{ reason }}</div>
+            {% endfor %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h2>Final Summary</h2>
+    <ul>
+      <li>Available stages: <code>{{ report.final_summary.available_stages }}</code></li>
+      <li>Compared pairs: <code>{{ report.final_summary.compared_pairs }}</code></li>
+      <li>Drift detected: <code>{{ report.final_summary.drift_detected }}</code></li>
+      <li>First drift stage: <code>{{ report.final_summary.first_drift_stage }}</code></li>
+      <li>First drift pair: <code>{{ report.final_summary.first_drift_pair }}</code></li>
+    </ul>
+  </body>
+</html>

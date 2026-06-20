@@ -21,11 +21,15 @@ TensorFence 适合这些场景：
   - [为什么要做这个](#为什么要做这个)
   - [什么时候适合用 TensorFence](#什么时候适合用-tensorfence)
   - [快速开始](#快速开始)
+  - [零基础安装](#零基础安装)
   - [Qt UI 构建](#qt-ui-构建)
   - [Agent 指南](#agent-指南)
   - [契约文件长什么样](#契约文件长什么样)
   - [必须填写什么](#必须填写什么)
+  - [草稿契约](#草稿契约)
+  - [阶段对比](#阶段对比)
   - [TensorFence 会检查什么](#tensorfence-会检查什么)
+  - [TensorFence 可以做什么](#tensorfence-可以做什么)
   - [当前状态](#当前状态)
   - [支持范围](#支持范围)
   - [仓库结构](#仓库结构)
@@ -76,9 +80,70 @@ tensorfence check-contract your.contract.yaml
 
 `tensorfence init` 会把一个起步契约写到你指定的路径。
 
+如果要做 RKNN 转换和连板流程，建议单独准备一个 WSL/Linux 环境。
+仓库里已经加了 `environment.wsl.yml`。RKNN-Toolkit2 请单独从 Rockchip 官方仓库安装对应的 Linux wheel，不要强行把它塞进当前这个 Windows 开发环境里。
+
+## 零基础安装
+
+如果你对 Conda、WSL、Python 环境这些还不熟，先看这两份文档：
+
+- 中文版：[docs/setup-beginner.zh-CN.md](./docs/setup-beginner.zh-CN.md)
+- 英文版：[docs/setup-beginner.md](./docs/setup-beginner.md)
+
+如果你想清理测试缓存和临时文件，可以执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\cleanup-temp.ps1
+```
+
+项目内约定的本地目录：
+
+- `.tmp/`：运行时临时产物和测试临时文件
+- `.cache/`：本地工具缓存，比如 pytest 缓存
+
+## 草稿契约
+
+如果你已经有模型文件，或者已经拿到了模型事实，TensorFence 可以先帮你起草一份契约，而不是从零开始手写。
+
+```bash
+tensorfence probe-model --model model.onnx --out out/probe
+tensorfence draft-contract --facts out/probe/model_facts.json --rules examples/rules/detection_yolo_v1.yaml --out out/draft.contract.yaml
+tensorfence check-contract out/draft.contract.yaml
+```
+
+这份草稿会刻意保持保守：
+
+- 图里能可靠拿到的内容直接复用
+- 图里拿不到的内容从显式规则补齐
+- 仍然需要人工确认的语义会放进报告里，不会假装“自动识别完成”
+
+## 阶段对比
+
+`compare-stages` 是第一版真正面向端到端对齐诊断的命令。v1 目前最适合直接吃各阶段导出的 `.npz` 输出：
+
+```bash
+tensorfence compare-stages \
+  --contract contract.yaml \
+  --image demo.jpg \
+  --framework-out framework.npz \
+  --onnx-out onnx.npz \
+  --rknn-out rknn.npz \
+  --out out/compare
+```
+
+它会输出：
+
+- `out/compare/report.json`
+- `out/compare/tensor_diffs.json`
+- `out/compare/final_summary.json`
+
+如果环境里已经装了 `onnxruntime`，也可以直接传 `--onnx model.onnx`，也可以继续传 `--onnx-out onnx.npz`。
+framework 和 RKNN 的自动执行位已经预留，但 v1 仍然以 `.npz` artifact 输入为主。
+
 ## Qt UI 构建
 
 Qt UI 通过项目根目录和 `src/tensorfence/qt/` 子目录中的 CMake 配置。
+它的职责是查看和轻量编辑契约、报告以及阶段差分 artifact，而不是再做一套执行引擎。
 
 要求：
 
@@ -200,6 +265,18 @@ quantization:
 - NMS 契约：阈值、类别处理、方法
 - 量化契约：校准集与推理预处理是否一致
 
+## TensorFence 可以做什么
+
+- 在导出和部署前校验显式契约
+- 检查单图预处理行为
+- 对比 framework、ONNX、RKNN 三段结果
+- 生成诊断 artifact 和报告
+- 从导入文件中探测模型结构与算子事实
+- 基于模型事实和用户规则生成草稿契约
+- 支持 CLI first 工作流，并提供 Qt 查看层
+
+正式范围说明见 [docs/product-scope.md](./docs/product-scope.md)。
+
 ## 当前状态
 
 TensorFence 目前处于基础建设阶段。
@@ -210,7 +287,7 @@ TensorFence 目前处于基础建设阶段。
 - 输入/输出语义契约
 - 明显不匹配项的校验
 - 张量摘要与差分辅助函数
-- `doctor`、`check-contract`、`init` 三个基础命令
+- `doctor`、`check-contract`、`init`、`inspect-image`、`probe-model`、`draft-contract` 命令
 
 现在就能帮你：
 
@@ -218,17 +295,14 @@ TensorFence 目前处于基础建设阶段。
 - 快速定位输入、输出、预处理、解码这几类明显漂移
 - 把模糊的部署失败变成可复现的报告
 - 为后续适配器和回归测试提供统一基线
+- 提取 ONNX 模型事实、算子统计和图摘要
+- 基于 ONNX facts 和规则快速起草契约
 
-<details>
-<summary>下一步会补什么</summary>
+下一阶段能力：
 
-- ONNX 执行
-- RKNN 执行
-- 框架适配器
-- 图像级预处理流水线
-- 端到端分阶段对比
-
-</details>
+- 统一报告和 artifact schema
+- ONNX 阶段对比
+- RKNN 阶段对比
 
 ## 支持范围
 
@@ -246,15 +320,24 @@ TensorFence 目前处于基础建设阶段。
 - `CMakeLists.txt`：Qt UI 的 CMake 入口
 - `src/tensorfence/core/`：契约、校验、差分与报告基础层
 - `src/tensorfence/adapters/`：框架和运行时适配器
+- `src/tensorfence/cli/`：分阶段 CLI 子命令模块
+- `src/tensorfence/probe/`：模型探测和图结构事实提取
+- `src/tensorfence/rules/`：用户自定义推断和映射规则
 - `src/tensorfence/qt/`：Qt UI 层
 - `src/tensorfence/qt/CMakeLists.txt`：Qt UI 子树
 - `src/tensorfence/qt/app/`：Qt 应用目标
 - `src/tensorfence/artifacts/`：artifact schema 和序列化
+- `src/tensorfence/artifacts/facts/`：模型事实 artifact schema
+- `src/tensorfence/artifacts/reports/`：报告 schema 和导出器
+- `src/tensorfence/artifacts/contracts/`：契约草稿和导出 artifact
 - `src/tensorfence/`：共享入口模块和公共代码
 - `docs/`：设计说明、截图和架构文档
+- `docs/product-scope.md`：正式范围和能力说明
 - `assets/`：图标和静态 UI 资源
 - `examples/`：示例契约文件
+- `examples/rules/`：用户规则示例
 - `examples/reports/`：示例报告输出
+- `examples/models/`：导入模型的示例元信息或清单
 - `tests/unit/`：单元测试
 - `tests/integration/`：适配器和流水线测试
 - `tests/fixtures/`：共享测试输入

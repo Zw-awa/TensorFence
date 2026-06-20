@@ -7,11 +7,15 @@ import sys
 from pathlib import Path
 from importlib.util import find_spec
 
-from . import __version__
-from .core.contracts import ContractError, load_contract
-from .core.report import render_validation_report
-from .core.templates import SAMPLE_CONTRACT_YAML
-from .core.validation import has_errors, validate_contract
+from .. import __version__
+from ..core.contracts import ContractError, load_contract
+from ..core.report import render_validation_report
+from ..core.templates import SAMPLE_CONTRACT_YAML
+from ..core.validation import has_errors, validate_contract
+from .compare_stages import build_parser as build_compare_stages_parser
+from .draft_contract import build_parser as build_draft_contract_parser
+from .inspect_image import build_parser as build_inspect_image_parser
+from .probe_model import build_parser as build_probe_model_parser
 
 
 def _module_status(module_name: str) -> str:
@@ -27,7 +31,11 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
         f"numpy: {_module_status('numpy')}",
         f"pydantic: {_module_status('pydantic')}",
         f"yaml: {_module_status('yaml')}",
+        f"onnx: {_module_status('onnx')}",
+        f"onnxruntime: {_module_status('onnxruntime')}",
+        f"jinja2: {_module_status('jinja2')}",
         "",
+        "Available commands: doctor, check-contract, init, inspect-image, probe-model, draft-contract, compare-stages.",
         "Foundation status: adapters and stage runners are not wired yet.",
     ]
     print("\n".join(lines))
@@ -45,6 +53,7 @@ def cmd_check_contract(args: argparse.Namespace) -> int:
     print(render_validation_report(contract, issues))
     return 1 if has_errors(issues) else 0
 
+
 def cmd_init(args: argparse.Namespace) -> int:
     target = Path(args.path)
     if target.exists() and not args.force:
@@ -58,7 +67,7 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="tensorfence", description="Foundation CLI for TensorFence")
+    parser = argparse.ArgumentParser(prog="tensorfence", description="CLI-first diagnostics for TensorFence")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     doctor = subparsers.add_parser("doctor", help="print environment and package status")
@@ -72,6 +81,11 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("path", type=Path)
     init.add_argument("--force", action="store_true", help="overwrite existing file")
     init.set_defaults(func=cmd_init)
+
+    build_inspect_image_parser(subparsers)
+    build_probe_model_parser(subparsers)
+    build_draft_contract_parser(subparsers)
+    build_compare_stages_parser(subparsers)
 
     return parser
 

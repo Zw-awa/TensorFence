@@ -1,0 +1,57 @@
+version: 1
+defaults:
+  name: "{model_name}-draft"
+  source_framework: onnx
+  target_runtime: rknn
+  task: detection
+  family: yolo
+selection:
+  input:
+    strategy: first
+  outputs:
+    strategy: all
+mapping:
+  input:
+    semantic: model_input
+    layout_from_rank:
+      rank4: NCHW
+    dtype_fallback: float32
+  outputs:
+    semantic: raw_predictions
+    layout: N/A
+    dtype_fallback: float32
+templates:
+  preprocess:
+    input_color_space: BGR
+    output_color_space: RGB
+    input_layout: HWC
+    output_layout: NCHW
+    resize:
+      mode: letterbox
+      interpolation: bilinear
+      keep_aspect_ratio: true
+    normalize:
+      scale: 0.00392156862745098
+      mean: [0.0, 0.0, 0.0]
+      std: [1.0, 1.0, 1.0]
+    pad_value: 114
+  decode:
+    enabled: true
+    family: yolo
+    mode: anchor_free
+    num_classes: 80
+    strides: [8, 16, 32]
+    score_activation: sigmoid
+    box_activation: sigmoid
+  nms:
+    enabled: true
+    score_threshold: 0.25
+    iou_threshold: 0.45
+    class_agnostic: false
+    max_detections: 300
+    method: nms
+  quantization:
+    enabled: false
+    match_preprocess: true
+notes:
+  - Draft generated from ONNX facts and YOLO-oriented defaults.

@@ -1,8 +1,10 @@
 __pycache__/
 .pytest_cache/
+.cache/
 .ruff_cache/
 .mypy_cache/
 .venv/
+.tmp*
 env/
 build/
 dist/
@@ -10,4 +12,5 @@ dist/
 .coverage
 htmlcov/
 .DS_Store
-
+pytest_cache*
+pytest-cache-files-*/

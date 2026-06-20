@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Inspection Report - {{ report.contract_name }}</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 2rem; line-height: 1.5; }
+      code { background: #f3f3f3; padding: 0.1rem 0.3rem; }
+      .status-pass { color: #1b7f3b; }
+      .status-warning { color: #b26a00; }
+      .status-fail { color: #b42318; }
+      table { border-collapse: collapse; margin-top: 1rem; }
+      th, td { border: 1px solid #ddd; padding: 0.4rem 0.6rem; text-align: left; }
+      th { background: #f7f7f7; }
+    </style>
+  </head>
+  <body>
+    <h1>Inspection Report: {{ report.contract_name }}</h1>
+    <p>Image: <code>{{ report.image_path }}</code></p>
+    <p>Source: <code>{{ report.source_framework }}</code> -> <code>{{ report.target_runtime }}</code></p>
+    <p>Task: <code>{{ report.task }}</code></p>
+    <p>Source image: <code>{{ report.source_image.width }}x{{ report.source_image.height }}</code></p>
+
+    <h2>Checks</h2>
+    <ul>
+      {% for check in report.checks %}
+      <li>
+        <strong class="status-{{ check.status }}">{{ check.status }}</strong>
+        {{ check.name }}: {{ check.message }}
+      </li>
+      {% endfor %}
+    </ul>
+
+    <h2>Tensor Summary</h2>
+    <table>
+      <tbody>
+        <tr><th>Shape</th><td><code>{{ report.tensor_summary.shape }}</code></td></tr>
+        <tr><th>Dtype</th><td><code>{{ report.tensor_summary.dtype }}</code></td></tr>
+        <tr><th>Min</th><td><code>{{ report.tensor_summary.minimum }}</code></td></tr>
+        <tr><th>Max</th><td><code>{{ report.tensor_summary.maximum }}</code></td></tr>
+        <tr><th>Mean</th><td><code>{{ report.tensor_summary.mean }}</code></td></tr>
+        <tr><th>Std</th><td><code>{{ report.tensor_summary.std }}</code></td></tr>
+      </tbody>
+    </table>
+  </body>
+</html>

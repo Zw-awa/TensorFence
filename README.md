@@ -21,11 +21,15 @@ If that sounds like your problem, this project is built for that failure mode.
   - [Why This Exists](#why-this-exists)
   - [When TensorFence Fits](#when-tensorfence-fits)
   - [Quick Start](#quick-start)
+  - [Beginner Setup](#beginner-setup)
   - [Qt UI Build](#qt-ui-build)
   - [Agent Guide](#agent-guide)
   - [What a Contract File Looks Like](#what-a-contract-file-looks-like)
   - [What You Must Fill In](#what-you-must-fill-in)
+  - [Draft Contract](#draft-contract)
+  - [Stage Compare](#stage-compare)
   - [What TensorFence Checks](#what-tensorfence-checks)
+  - [What TensorFence Can Do](#what-tensorfence-can-do)
   - [Current Status](#current-status)
   - [Supported Scope](#supported-scope)
   - [Repository Layout](#repository-layout)
@@ -76,9 +80,70 @@ tensorfence check-contract your.contract.yaml
 
 `tensorfence init` writes a starter contract file to the path you choose.
 
+For RKNN conversion and board-side workflows, keep a separate WSL/Linux environment.
+This repository includes `environment.wsl.yml` for that split. Install the official RKNN-Toolkit2 Linux wheel separately from the Rockchip repository, and do not try to force RKNN-Toolkit2 into the Windows dev env.
+
+## Beginner Setup
+
+If you are not comfortable with Conda, WSL, or Python environments yet, start here:
+
+- English: [docs/setup-beginner.md](./docs/setup-beginner.md)
+- Chinese: [docs/setup-beginner.zh-CN.md](./docs/setup-beginner.zh-CN.md)
+
+To clean test caches and temporary artifacts:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\cleanup-temp.ps1
+```
+
+Project-local runtime directories:
+
+- `.tmp/` for temporary run artifacts and test scratch data
+- `.cache/` for local tooling caches such as pytest
+
+## Draft Contract
+
+When you already have a model file or model facts, TensorFence can draft a contract instead of asking you to start from zero.
+
+```bash
+tensorfence probe-model --model model.onnx --out out/probe
+tensorfence draft-contract --facts out/probe/model_facts.json --rules examples/rules/detection_yolo_v1.yaml --out out/draft.contract.yaml
+tensorfence check-contract out/draft.contract.yaml
+```
+
+The draft is intentionally conservative:
+
+- it reuses exported facts where the graph is reliable
+- it fills the rest from explicit rules
+- it keeps unresolved semantic choices visible in the report
+
+## Stage Compare
+
+`compare-stages` is the first end-to-end diagnosis command. In v1 it works best with exported stage outputs:
+
+```bash
+tensorfence compare-stages \
+  --contract contract.yaml \
+  --image demo.jpg \
+  --framework-out framework.npz \
+  --onnx-out onnx.npz \
+  --rknn-out rknn.npz \
+  --out out/compare
+```
+
+It writes:
+
+- `out/compare/report.json`
+- `out/compare/tensor_diffs.json`
+- `out/compare/final_summary.json`
+
+If `onnxruntime` is installed, you can also provide `--onnx model.onnx` or `--onnx-out onnx.npz`.
+Direct framework and RKNN execution are still staged behind adapter hooks, so v1 expects `.npz` artifacts there.
+
 ## Qt UI Build
 
 The Qt UI is configured with CMake from the project root and the `src/tensorfence/qt/` subtree.
+It is intended as a viewer and lightweight editor for contracts, reports, and stage-diff artifacts, not as a second execution engine.
 
 Requirements:
 
@@ -200,6 +265,18 @@ Recommended, but not strictly mandatory:
 - NMS contract: thresholds, class handling, method
 - Quantization contract: calibration data and preprocess match
 
+## What TensorFence Can Do
+
+- validate explicit deployment contracts before export and deployment
+- inspect single-image preprocessing behavior
+- compare framework, ONNX, and RKNN stages
+- generate diagnostic artifacts and reports
+- probe model structure and operator facts from imported files
+- generate draft contracts from model facts and user-defined rules
+- support CLI-first workflows with a Qt viewer layer
+
+See [docs/product-scope.md](./docs/product-scope.md) for the formal scope.
+
 ## Current Status
 
 TensorFence is in the foundation stage.
@@ -210,7 +287,7 @@ What exists now:
 - A contract schema for input and output semantics
 - Validation for obvious mismatch risks
 - Tensor summary and tensor diff helpers
-- A small CLI for `doctor`, `check-contract`, and `init`
+- A CLI for `doctor`, `check-contract`, `init`, `inspect-image`, `probe-model`, and `draft-contract`
 
 What you can use right now:
 
@@ -218,17 +295,14 @@ What you can use right now:
 - catch input, output, preprocess, and decode mismatches early
 - turn a vague deployment failure into a reproducible report
 - build a clean baseline for future adapter work
+- extract ONNX model facts, operator histograms, and graph summaries
+- generate a rule-driven draft contract from ONNX facts
 
-<details>
-<summary>What is not built yet / Next steps</summary>
+Next capability milestones:
 
-- ONNX execution
-- RKNN execution
-- Framework adapters
-- Image-level preprocessing pipeline
-- End-to-end stage comparison
-
-</details>
+- shared report and artifact schema
+- ONNX stage comparison
+- RKNN stage comparison
 
 ## Supported Scope
 
@@ -246,15 +320,24 @@ What you can use right now:
 - `CMakeLists.txt`: Qt UI CMake entry point
 - `src/tensorfence/core/`: contract, validation, diff, and report foundations
 - `src/tensorfence/adapters/`: framework and runtime adapters
+- `src/tensorfence/cli/`: staged CLI command modules
+- `src/tensorfence/probe/`: model probing and graph fact extraction
+- `src/tensorfence/rules/`: user-defined inference and mapping rules
 - `src/tensorfence/qt/`: Qt UI layer
 - `src/tensorfence/qt/CMakeLists.txt`: Qt UI subtree
 - `src/tensorfence/qt/app/`: Qt application target
 - `src/tensorfence/artifacts/`: artifact schemas and serializers
+- `src/tensorfence/artifacts/facts/`: model fact artifact schemas
+- `src/tensorfence/artifacts/reports/`: report schema and exporters
+- `src/tensorfence/artifacts/contracts/`: contract draft/export artifacts
 - `src/tensorfence/`: shared package entry points and common modules
 - `docs/`: design notes, screenshots, and architecture docs
+- `docs/product-scope.md`: formal scope and capability statement
 - `assets/`: icons and static UI resources
 - `examples/`: sample contract files
+- `examples/rules/`: sample user rules
 - `examples/reports/`: sample report outputs
+- `examples/models/`: sample imported model metadata or manifests
 - `tests/unit/`: unit-level checks
 - `tests/integration/`: adapter and pipeline checks
 - `tests/fixtures/`: shared test inputs

@@ -1,0 +1,18 @@
+name: tensorfence-wsl
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - jinja2>=3.1
+  - numpy>=2.0
+  - onnx>=1.17
+  - onnxruntime>=1.19
+  - pillow>=10.0
+  - pyyaml>=6.0
+  - pydantic>=2.7
+  - pytest>=8.0
+
+# After creating this WSL/Linux environment, install RKNN-Toolkit2 manually from the official repository.
+# Pick the wheel that matches your Python version and Linux architecture.
+# Official repository: https://github.com/airockchip/rknn-toolkit2
