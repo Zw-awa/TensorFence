@@ -280,12 +280,13 @@ conda clean -i
 
 在 WSL 里进入 TensorFence 仓库。
 
-如果仓库在 Windows 的 `E:` 盘里，那么在 WSL 里通常会映射成 `/mnt/e/...`。
+如果仓库在 Windows 的某个盘符里，那么在 WSL 里通常会映射成 `/mnt/<盘符小写>/...`。
 
-例如：
+示例形式：
 
 ```bash
-cd /mnt/e/game-projects/github-projects/TensorFence
+export TENSORFENCE_ROOT=/mnt/<盘符小写>/<TensorFence 的路径>
+cd "$TENSORFENCE_ROOT"
 ```
 
 然后创建 WSL 环境：

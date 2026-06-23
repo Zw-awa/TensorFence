@@ -259,12 +259,13 @@ conda clean -i
 
 Inside WSL, go to the TensorFence repository.
 
-If the repository is on your Windows `E:` drive, it is usually visible in WSL under `/mnt/e/...`.
+If the repository is on a Windows drive, it is usually visible in WSL under `/mnt/<drive-letter-lowercase>/...`.
 
-Example:
+Example pattern:
 
 ```bash
-cd /mnt/e/game-projects/github-projects/TensorFence
+export TENSORFENCE_ROOT=/mnt/<drive-letter-lowercase>/<path-to-TensorFence>
+cd "$TENSORFENCE_ROOT"
 ```
 
 Create the WSL environment:

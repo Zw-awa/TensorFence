@@ -22,12 +22,12 @@ TensorFence 适合这些场景：
   - [什么时候适合用 TensorFence](#什么时候适合用-tensorfence)
   - [快速开始](#快速开始)
   - [零基础安装](#零基础安装)
+  - [草稿契约](#草稿契约)
+  - [阶段对比](#阶段对比)
   - [Qt UI 构建](#qt-ui-构建)
   - [Agent 指南](#agent-指南)
   - [契约文件长什么样](#契约文件长什么样)
   - [必须填写什么](#必须填写什么)
-  - [草稿契约](#草稿契约)
-  - [阶段对比](#阶段对比)
   - [TensorFence 会检查什么](#tensorfence-会检查什么)
   - [TensorFence 可以做什么](#tensorfence-可以做什么)
   - [当前状态](#当前状态)
@@ -149,7 +149,7 @@ Qt UI 通过项目根目录和 `src/tensorfence/qt/` 子目录中的 CMake 配�
 
 - `CMake >= 3.24`
 - `Qt >= 6.5`
-- Qt 模块：`Core`、`Widgets`
+- Qt 模块：`Core`、`Quick`、`Qml`、`QuickControls2`、`QuickDialogs2`
 
 ```bash
 cmake -S . -B build/qt
@@ -158,8 +158,9 @@ cmake --build build/qt
 
 如果 CMake 找不到 Qt，可以显式指定 Qt 安装路径：
 
-```bash
-cmake -S . -B build/qt -DCMAKE_PREFIX_PATH="C:/Qt/6.8.0/msvc2022_64"
+```bat
+set QT_ROOT=<你的 Qt kit 路径>
+cmake -S . -B build/qt -DCMAKE_PREFIX_PATH="%QT_ROOT%"
 cmake --build build/qt --config Release
 ```
 
@@ -168,7 +169,20 @@ cmake --build build/qt --config Release
 - 单配置生成器：`build/qt/bin/tensorfence_qt`
 - Windows 多配置生成器：`build/qt/bin/Release/tensorfence_qt.exe`
 
-当前 skeleton 会打开一个小的 `TensorFence Qt UI skeleton` 窗口。
+当前 Qt 版本会打开一个白色工作台壳层，包含：
+
+- 左侧导航栏
+- 支持拖拽导入的首页工作台
+- Contracts、Reports、Compare、Settings 占位页
+- 实时状态和反馈区域
+
+Windows 下可直接使用 `tools/` 里的辅助脚本：
+
+- `qt-configure-release.bat`
+- `qt-build-release.bat`
+- `qt-deploy-release.bat`
+- `qt-run-release.bat`
+- `qt-release-all.bat`
 
 Qt UI 的许可说明见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
 

@@ -8,11 +8,18 @@ Current contents:
 - `app/`: the Qt executable target
 - `CMakeLists.txt`: Qt subtree entry point
 
+Current behavior:
+
+- launches a white workspace shell
+- shows a left navigation rail and right context panel
+- routes files by type into placeholder workspaces
+- emphasizes immediate UI feedback over backend execution
+
 Requirements:
 
 - `CMake >= 3.24`
 - `Qt >= 6.5`
-- Qt modules: `Core`, `Widgets`
+- Qt modules: `Core`, `Quick`, `Qml`, `QuickControls2`, `QuickDialogs2`
 
 Build from the repository root:
 
@@ -23,8 +30,9 @@ cmake --build build/qt
 
 If Qt is not auto-detected:
 
-```bash
-cmake -S . -B build/qt -DCMAKE_PREFIX_PATH="C:/Qt/6.8.0/msvc2022_64"
+```bat
+set QT_ROOT=<path-to-your-qt-kit>
+cmake -S . -B build/qt -DCMAKE_PREFIX_PATH="%QT_ROOT%"
 cmake --build build/qt --config Release
 ```
 

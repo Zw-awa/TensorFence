@@ -22,12 +22,12 @@ If that sounds like your problem, this project is built for that failure mode.
   - [When TensorFence Fits](#when-tensorfence-fits)
   - [Quick Start](#quick-start)
   - [Beginner Setup](#beginner-setup)
+  - [Draft Contract](#draft-contract)
+  - [Stage Compare](#stage-compare)
   - [Qt UI Build](#qt-ui-build)
   - [Agent Guide](#agent-guide)
   - [What a Contract File Looks Like](#what-a-contract-file-looks-like)
   - [What You Must Fill In](#what-you-must-fill-in)
-  - [Draft Contract](#draft-contract)
-  - [Stage Compare](#stage-compare)
   - [What TensorFence Checks](#what-tensorfence-checks)
   - [What TensorFence Can Do](#what-tensorfence-can-do)
   - [Current Status](#current-status)
@@ -149,7 +149,7 @@ Requirements:
 
 - `CMake >= 3.24`
 - `Qt >= 6.5`
-- Qt modules: `Core`, `Widgets`
+- Qt modules: `Core`, `Quick`, `Qml`, `QuickControls2`, `QuickDialogs2`
 
 ```bash
 cmake -S . -B build/qt
@@ -158,8 +158,9 @@ cmake --build build/qt
 
 If CMake cannot find Qt, point it at your Qt installation:
 
-```bash
-cmake -S . -B build/qt -DCMAKE_PREFIX_PATH="C:/Qt/6.8.0/msvc2022_64"
+```bat
+set QT_ROOT=<path-to-your-qt-kit>
+cmake -S . -B build/qt -DCMAKE_PREFIX_PATH="%QT_ROOT%"
 cmake --build build/qt --config Release
 ```
 
@@ -168,7 +169,20 @@ Minimal run instructions:
 - single-config generators: `build/qt/bin/tensorfence_qt`
 - multi-config generators on Windows: `build/qt/bin/Release/tensorfence_qt.exe`
 
-The current skeleton opens a small `TensorFence Qt UI skeleton` window.
+The current Qt build opens a compact warm-white workspace shell with:
+
+- a left navigation rail
+- a drag-and-drop home workspace
+- contracts, reports, compare, and settings placeholder pages
+- live status and feedback surfaces
+
+Windows helper scripts are available under `tools/`:
+
+- `qt-configure-release.bat`
+- `qt-build-release.bat`
+- `qt-deploy-release.bat`
+- `qt-run-release.bat`
+- `qt-release-all.bat`
 
 See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for Qt UI licensing notes.
 
