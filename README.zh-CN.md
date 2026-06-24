@@ -96,6 +96,12 @@ tensorfence check-contract your.contract.yaml
 powershell -ExecutionPolicy Bypass -File .\tools\cleanup-temp.ps1
 ```
 
+如果还想一起清掉本地构建产物，比如 `build/`、`dist/`、`htmlcov/` 和 `*.egg-info/`，可以执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\cleanup-temp.ps1 -IncludeBuildArtifacts
+```
+
 项目内约定的本地目录：
 
 - `.tmp/`：运行时临时产物和测试临时文件

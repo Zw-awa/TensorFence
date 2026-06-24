@@ -15,6 +15,7 @@ TabPage {
             anchors.fill: parent
 
             Item {
+                id: leftHeader
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
@@ -32,7 +33,7 @@ TabPage {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.topMargin: size_.spacing
-                anchors.top: parent.top
+                anchors.top: leftHeader.bottom
                 anchors.margins: size_.spacing
                 spacing: size_.spacing * 0.5
 

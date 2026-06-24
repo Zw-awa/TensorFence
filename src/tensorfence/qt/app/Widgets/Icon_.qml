@@ -90,6 +90,7 @@ Item {
                 line(w / 2, pad, w / 2, h - pad)
                 line(pad, h / 2, w - pad, h / 2)
                 break
+            case "close":
             case "no":
                 line(pad, pad, w - pad, h - pad)
                 line(w - pad, pad, pad, h - pad)
@@ -102,6 +103,12 @@ Item {
             case "lock":
                 ctx.beginPath()
                 ctx.arc(w * 0.5, h * 0.38, s * 0.16, Math.PI, 0)
+                ctx.stroke()
+                roundRect(w * 0.26, h * 0.42, w * 0.48, h * 0.36, s * 0.08, false)
+                break
+            case "lock_open":
+                ctx.beginPath()
+                ctx.arc(w * 0.44, h * 0.38, s * 0.16, Math.PI * 1.05, Math.PI * 1.92)
                 ctx.stroke()
                 roundRect(w * 0.26, h * 0.42, w * 0.48, h * 0.36, s * 0.08, false)
                 break

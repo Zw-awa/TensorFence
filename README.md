@@ -96,6 +96,12 @@ To clean test caches and temporary artifacts:
 powershell -ExecutionPolicy Bypass -File .\tools\cleanup-temp.ps1
 ```
 
+To also remove local build outputs such as `build/`, `dist/`, `htmlcov/`, and `*.egg-info/`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\cleanup-temp.ps1 -IncludeBuildArtifacts
+```
+
 Project-local runtime directories:
 
 - `.tmp/` for temporary run artifacts and test scratch data

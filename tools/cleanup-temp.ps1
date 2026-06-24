@@ -1,19 +1,39 @@
 param(
-    [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+    [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
+    [switch]$IncludeBuildArtifacts
 )
 
 $ErrorActionPreference = "Stop"
 
 $targets = @(
     ".tmp",
+    ".cache",
+    ".ruff_cache",
+    ".mypy_cache",
     ".pytest_cache"
 )
 
-$legacyPatterns = @(
+$rootLegacyPatterns = @(
     ".tmp-*",
-    "pytest-cache-files-*",
     "pytest_cache*"
 )
+
+$nestedLegacyPatterns = @(
+    "pytest-cache-files-*"
+)
+
+$fileTargets = @()
+
+if ($IncludeBuildArtifacts) {
+    $targets += @(
+        "build",
+        "dist",
+        "htmlcov"
+    )
+    $fileTargets += @(
+        ".coverage"
+    )
+}
 
 function Test-InRepo([string]$PathValue) {
     $repo = [System.IO.Path]::GetFullPath($RepoRoot)
@@ -52,7 +72,18 @@ function Remove-RepoDirectory([string]$DirectoryPath) {
     Remove-Item -LiteralPath $DirectoryPath -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host "Cleaning TensorFence temp/cache directories under: $RepoRoot"
+function Remove-RepoFile([string]$FilePath) {
+    if (-not (Test-Path -LiteralPath $FilePath)) {
+        return
+    }
+    if (-not (Test-InRepo $FilePath)) {
+        throw "Refusing to remove path outside repository: $FilePath"
+    }
+
+    Remove-Item -LiteralPath $FilePath -Force -ErrorAction SilentlyContinue
+}
+
+Write-Host "Cleaning TensorFence local artifacts under: $RepoRoot"
 
 foreach ($target in $targets) {
     $fullPath = Join-Path $RepoRoot $target
@@ -62,11 +93,20 @@ foreach ($target in $targets) {
     }
 }
 
-foreach ($pattern in $legacyPatterns) {
+foreach ($pattern in $rootLegacyPatterns) {
     Get-ChildItem -LiteralPath $RepoRoot -Force -Directory -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -like $pattern } |
         ForEach-Object {
             Write-Host "Removing legacy temp dir $($_.FullName)"
+            Remove-RepoDirectory $_.FullName
+        }
+}
+
+foreach ($pattern in $nestedLegacyPatterns) {
+    Get-ChildItem -LiteralPath $RepoRoot -Recurse -Force -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like $pattern } |
+        ForEach-Object {
+            Write-Host "Removing nested cache dir $($_.FullName)"
             Remove-RepoDirectory $_.FullName
         }
 }
@@ -77,5 +117,22 @@ Get-ChildItem -LiteralPath $RepoRoot -Recurse -Force -Directory -ErrorAction Sil
         Write-Host "Removing python cache $($_.FullName)"
         Remove-RepoDirectory $_.FullName
     }
+
+if ($IncludeBuildArtifacts) {
+    Get-ChildItem -LiteralPath $RepoRoot -Recurse -Force -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like "*.egg-info" } |
+        ForEach-Object {
+            Write-Host "Removing packaging artifact $($_.FullName)"
+            Remove-RepoDirectory $_.FullName
+        }
+}
+
+foreach ($target in $fileTargets) {
+    $fullPath = Join-Path $RepoRoot $target
+    if (Test-Path -LiteralPath $fullPath) {
+        Write-Host "Removing $fullPath"
+        Remove-RepoFile $fullPath
+    }
+}
 
 Write-Host "Cleanup finished."

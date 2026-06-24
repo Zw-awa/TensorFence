@@ -9,12 +9,15 @@ ScrollView {
     clip: true
     contentWidth: availableWidth
 
-    TextEdit_ {
+    Text_ {
         id: body
         width: root.availableWidth
-        readOnly: true
-        textFormat: TextEdit.MarkdownText
+        height: implicitHeight
+        textFormat: Text.MarkdownText
+        wrapMode: Text.Wrap
         text: root.text
+        lineHeight: 1.35
+        lineHeightMode: Text.ProportionalHeight
         onLinkActivated: function(link) {
             Qt.openUrlExternally(link)
         }

@@ -27,7 +27,9 @@ Item {
         anchors.bottom: parent.bottom
 
         Component.onCompleted: {
-            qmlapp.tab.page.pagesNest.parent = pageHost
+            const nest = qmlapp.tab.page.pagesNest
+            nest.parent = pageHost
+            nest.anchors.fill = pageHost
         }
     }
 }

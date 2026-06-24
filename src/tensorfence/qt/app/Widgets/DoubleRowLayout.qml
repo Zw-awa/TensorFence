@@ -73,12 +73,13 @@ Item {
     onRightItemChanged: if (rightItem) rightItem.parent = rightHost
 
     Item {
+        id: contentRoot
         anchors.fill: parent
         anchors.margins: root.margins
 
         Item {
             id: leftHost
-            anchors.left: parent.left
+            x: 0
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             width: root.hideLR === 1 ? 0 : divider.x
@@ -87,11 +88,10 @@ Item {
 
         Item {
             id: rightHost
-            anchors.right: parent.right
+            x: divider.x + divider.width
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            x: divider.x + divider.width
-            width: root.hideLR === 2 ? 0 : parent.width - x
+            width: root.hideLR === 2 ? 0 : Math.max(0, contentRoot.width - x)
             visible: root.hideLR !== 2
         }
 
@@ -119,7 +119,7 @@ Item {
                 drag.target: root.hideLR === 0 ? divider : undefined
                 drag.axis: Drag.XAxis
                 drag.minimumX: 0
-                drag.maximumX: parent.parent.width - divider.width
+                drag.maximumX: contentRoot.width - divider.width
 
                 onPositionChanged: {
                     if (drag.active) {

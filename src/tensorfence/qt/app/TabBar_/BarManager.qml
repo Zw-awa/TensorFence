@@ -14,6 +14,10 @@ Repeater {
         model.insert(insertAt, { "title_": title, "checked_": false })
     }
 
+    function clearTabs() {
+        model.clear()
+    }
+
     function delTab(index) {
         if (!isIndex(index)) {
             return
@@ -43,11 +47,15 @@ Repeater {
             return
         }
         model.move(index, go, 1)
+        resetIndex()
     }
 
     function resetIndex() {
         for (let i = 0; i < model.count; i++) {
-            itemAt(i).index = i
+            const item = itemAt(i)
+            if (item) {
+                item.pageIndex = i
+            }
         }
     }
 
