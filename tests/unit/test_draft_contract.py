@@ -141,6 +141,7 @@ class DraftContractTests(unittest.TestCase):
         self.assertEqual(contract.decode.head_names, ["output0"])
 
         report = json.loads((temp_root / "draft_report.json").read_text(encoding="utf-8"))
+        self.assertEqual(report["schema_version"], "tensorfence.draft-report/v1")
         self.assertEqual(report["task"], "detection")
         self.assertTrue(any(item["path"] == "preprocess" for item in report["needs_confirmation"]))
 

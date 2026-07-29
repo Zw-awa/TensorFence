@@ -80,6 +80,7 @@ class ProbeModelTests(unittest.TestCase):
 
         facts = json.loads((out_dir / "model_facts.json").read_text(encoding="utf-8"))
         self.assertEqual(facts["format"], "onnx")
+        self.assertEqual(facts["schema_version"], "tensorfence.model-facts/v1")
         self.assertEqual(facts["inputs"][0]["name"], "input")
         self.assertEqual(facts["outputs"][0]["name"], "output")
         self.assertEqual(facts["operator_histogram"]["Relu"], 1)
@@ -108,6 +109,7 @@ class ProbeModelTests(unittest.TestCase):
         summary = json.loads((out_dir / "ops_summary.json").read_text(encoding="utf-8"))
         markdown = (out_dir / "graph_summary.md").read_text(encoding="utf-8")
         self.assertEqual(facts["operator_histogram"]["NonMaxSuppression"], 1)
+        self.assertEqual(summary["schema_version"], "tensorfence.ops-summary/v1")
         self.assertTrue(any("duplicate postprocessing" in warning for warning in facts["warnings"]))
         self.assertEqual(summary["warnings"], facts["warnings"])
         self.assertIn("embedded postprocess detected", markdown)

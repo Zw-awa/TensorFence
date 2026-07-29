@@ -2,7 +2,7 @@
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
-[![状态](https://img.shields.io/badge/status-foundation-blue)](#当前状态)
+[![状态](https://img.shields.io/badge/status-CLI%20MVP-green)](#当前状态)
 [![协议](https://img.shields.io/badge/license-Apache%202.0-green)](./LICENSE)
 
 TensorFence 适合这些场景：
@@ -24,6 +24,7 @@ TensorFence 适合这些场景：
   - [零基础安装](#零基础安装)
   - [草稿契约](#草稿契约)
   - [阶段对比](#阶段对比)
+  - [张量产物](#张量产物)
   - [Qt UI 构建](#qt-ui-构建)
   - [Agent 指南](#agent-指南)
   - [契约文件长什么样](#契约文件长什么样)
@@ -125,7 +126,7 @@ tensorfence check-contract out/draft.contract.yaml
 
 ## 阶段对比
 
-`compare-stages` 是第一版真正面向端到端对齐诊断的命令。v1 目前最适合直接吃各阶段导出的 `.npz` 输出：
+`compare-stages` 是 artifact-first 的端到端诊断命令：
 
 ```bash
 tensorfence compare-stages \
@@ -134,7 +135,8 @@ tensorfence compare-stages \
   --framework-out framework.npz \
   --onnx-out onnx.npz \
   --rknn-out rknn.npz \
-  --out out/compare
+  --out out/compare \
+  --report-format html
 ```
 
 它会输出：
@@ -142,9 +144,31 @@ tensorfence compare-stages \
 - `out/compare/report.json`
 - `out/compare/tensor_diffs.json`
 - `out/compare/final_summary.json`
+- 请求 HTML 时还会生成 `out/compare/report.html`
 
-如果环境里已经装了 `onnxruntime`，也可以直接传 `--onnx model.onnx`，也可以继续传 `--onnx-out onnx.npz`。
-framework 和 RKNN 的自动执行位已经预留，但 v1 仍然以 `.npz` artifact 输入为主。
+环境中安装了 `onnxruntime` 时，可以传 `--onnx model.onnx` 直接执行 ONNX。这个 MVP 尚未实现 framework 和 RKNN 的直接执行；应在各自原生环境抓取输出，再把标准 `.npz` artifact 交给 TensorFence。
+
+输出名称必须和契约一致。TensorFence 默认拒绝名称不匹配；`--map-by-order` 只是兼容旧数据的显式逃生口，启用后会在报告中留下警告。`--max-abs-error`、`--min-cosine-similarity` 和小数值归零相关阈值都可以从 CLI 调整。
+
+报告会给出绝对/相对误差、余弦相似度、有限值与 NaN/Inf 数量、零值比例、整数饱和比例和重复极值剪裁比例。当前的保守智能识别可以指出“小的非零参考值被压成零”和可能的剪裁/饱和；ONNX 探测还会提示图内后处理与应用侧重复执行的风险。它们都保留测量证据，不会自动修模型。
+
+## 张量产物
+
+张量 artifact v1 在 `.npz` 中保存具名数组和内嵌 manifest。manifest 记录阶段、来源、dtype、shape、provenance，以及可选的量化 scale/zero-point。旧的普通 `.npz` 仍可读取。带元数据的 raw INT8 会在数值比较域显式反量化，同时保留原始端点统计；任何缺少元数据的 raw INT 比较都会被拒绝。
+
+当框架端或板端已经把输出保存成 `.npy` 时，不需要安装对应运行时适配器，直接打包即可：
+
+```bash
+tensorfence dump-tensors \
+  --stage rknn \
+  --source "rknn-runtime 2.3.2 / RK3588" \
+  --tensor output0=output0.npy \
+  --quantization-json quantization.json \
+  --provenance-json provenance.json \
+  --out rknn.npz
+```
+
+Python 写入 API、manifest schema、量化元数据和 framework/RKNN 抓取示例见 [docs/tensor-artifact-v1.md](./docs/tensor-artifact-v1.md)。
 
 ## Qt UI 构建
 
@@ -182,13 +206,15 @@ cmake --build build/qt --config Release
 - Contracts、Reports、Compare、Settings 占位页
 - 实时状态和反馈区域
 
-Windows 下可直接使用 `tools/` 里的辅助脚本：
+Windows 下统一使用一个 Qt 入口：
 
-- `qt-configure-release.bat`
-- `qt-build-release.bat`
-- `qt-deploy-release.bat`
-- `qt-run-release.bat`
-- `qt-release-all.bat`
+```powershell
+.\tools\qt.ps1 build
+.\tools\qt.ps1 smoke
+.\tools\qt.ps1 run
+```
+
+脚本按“命令行参数、环境变量、`.env`、自动发现”的顺序定位 Qt，并固定使用该安装中的 CMake、MinGW 和 `MinGW Makefiles`。需要本地配置时，将 `.env.example` 复制为 `.env` 并填写 `QT_ROOT`、`QT_VERSION`；`.env` 不会被 Git 提交。检测到 Codex 环境时会自动启用 agent-safe CMake 分支，旧 `.bat` 文件仍作为兼容包装保留。
 
 Qt UI 的许可说明见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
 
@@ -278,12 +304,12 @@ quantization:
 
 ## TensorFence 会检查什么
 
-- 输入契约：shape、dtype、layout、颜色空间
+- 输入契约：shape、dtype、layout、颜色空间和任务相关要求
 - 预处理契约：resize、letterbox、normalize、pad value
-- 输出契约：tensor 顺序、tensor 语义、tensor shape
-- 解码契约：YOLO / PP-YOLOE 类解码规则
-- NMS 契约：阈值、类别处理、方法
-- 量化契约：校准集与推理预处理是否一致
+- 输出契约：显式 tensor 名称、语义和 shape
+- Decode/NMS 声明：必填字段和明显的内部矛盾
+- 量化声明：校准集引用和预处理匹配意图
+- 阶段张量：有限值、零值、饱和/剪裁及绝对/相对漂移
 
 ## TensorFence 可以做什么
 
@@ -299,41 +325,48 @@ quantization:
 
 ## 当前状态
 
-TensorFence 目前处于基础建设阶段。
+TensorFence 已达到第一个 artifact-first CLI MVP。
 
 已具备的内容：
 
-- 支持 `conda` 的项目骨架
-- 输入/输出语义契约
-- 明显不匹配项的校验
-- 张量摘要与差分辅助函数
-- `doctor`、`check-contract`、`init`、`inspect-image`、`probe-model`、`draft-contract` 命令
+- 严格且按任务校验的部署契约，未知字段会直接报错
+- ONNX 图探测和 ONNX Runtime 直接执行
+- 单图预处理检查
+- 标准张量 artifact schema v1 和 `dump-tensors` 抓取工具
+- framework/ONNX/RKNN artifact 对比及 JSON、Markdown、HTML 报告
+- 可配置的数值漂移指标和保守原因识别
+- Python 3.12 CI、真实 ONNX 集成测试和 wheel 安装后 HTML 烟测
 
 现在就能帮你：
 
-- 在导出前先把契约和预处理问题拦住
-- 快速定位输入、输出、预处理、解码这几类明显漂移
-- 把模糊的部署失败变成可复现的报告
-- 为后续适配器和回归测试提供统一基线
-- 提取 ONNX 模型事实、算子统计和图摘要
-- 基于 ONNX facts 和规则快速起草契约
+- 在导出前校验或起草契约
+- 检查图片预处理后的确切输入张量
+- 提取 ONNX 模型事实、算子统计和图内后处理风险
+- 直接运行 ONNX，并与抓取的 framework/RKNN 张量比较
+- 识别数值漂移、非有限输出、小数值归零和剪裁/饱和证据
+- 在不修改模型的前提下生成可复现、带版本的产物
 
-下一阶段能力：
+MVP 的明确边界：
 
-- 统一报告和 artifact schema
-- ONNX 阶段对比
-- RKNN 阶段对比
+- 不直接执行 framework 和 RKNN 模型，需在外部抓取张量
+- YOLO/PP-YOLOE decode 和 NMS 当前只做声明与风险检查，不执行专用后处理
+- 预处理目前输出 float32 图片张量
+- Qt 仍是查看器/工作台预览，并未接通每一条 CLI 流程
+- TensorFence 不会自动改图、重导出或应用量化修复
 
 ## 支持范围
 
 | 领域 | 状态 |
 | --- | --- |
-| 检测任务契约 | 基础阶段 |
-| YOLO 类解码规则 | 基础阶段 |
-| PP-YOLOE 契约 | 计划中 |
-| ONNX 运行时对比 | 计划中 |
-| RKNN 运行时对比 | 计划中 |
-| 量化漂移报告 | 计划中 |
+| 严格契约校验 | MVP |
+| ONNX 探测和直接运行时对比 | MVP |
+| Framework 输出对比 | MVP，通过张量 artifact |
+| RKNN 输出对比 | MVP，通过张量 artifact |
+| 张量 manifest 和量化元数据 | v1 |
+| 数值/量化漂移报告 | MVP |
+| YOLO/PP-YOLOE decode 与 NMS 执行 | 未实现 |
+| Framework/RKNN 直接适配器 | 未实现 |
+| Qt 工作台 | 预览壳层 |
 
 ## 仓库结构
 
@@ -359,7 +392,8 @@ TensorFence 目前处于基础建设阶段。
 - `examples/reports/`：示例报告输出
 - `examples/models/`：导入模型的示例元信息或清单
 - `tests/unit/`：单元测试
-- `tests/integration/`：适配器和流水线测试
+- `tests/integration/`：真实 ONNX CLI 流水线测试
+- `.github/workflows/`：Python 测试和 wheel 安装 CI
 - `tests/fixtures/`：共享测试输入
 - `.github/ISSUE_TEMPLATE/`：贡献者使用的 issue 模板
 - `THIRD_PARTY_NOTICES.md`：第三方协议说明

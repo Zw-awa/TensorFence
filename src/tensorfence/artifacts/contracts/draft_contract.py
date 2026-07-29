@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Literal
 
 
+DRAFT_REPORT_SCHEMA_VERSION = "tensorfence.draft-report/v1"
+
+
 @dataclass(frozen=True)
 class DraftFieldDecision:
     path: str
@@ -41,6 +44,7 @@ class DraftContractReport:
     decisions: list[DraftFieldDecision]
     issues: list[DraftIssue]
     needs_confirmation: list[DraftConfirmation]
+    schema_version: str = DRAFT_REPORT_SCHEMA_VERSION
 
 
 def draft_report_to_dict(report: DraftContractReport) -> dict:

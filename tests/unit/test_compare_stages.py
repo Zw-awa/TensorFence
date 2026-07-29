@@ -18,6 +18,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from tensorfence.cli import main
+from tensorfence.artifacts import write_tensor_artifact
 
 
 CONTRACT_TEXT = """
@@ -119,6 +120,7 @@ class CompareStagesTests(unittest.TestCase):
         self.assertTrue((out_dir / "final_summary.json").exists())
 
         report = json.loads((out_dir / "report.json").read_text(encoding="utf-8"))
+        self.assertEqual(report["schema_version"], "tensorfence.stage-report/v1")
         self.assertEqual(report["contract_name"], "test-compare")
         self.assertEqual(len(report["stages"]), 3)
         self.assertTrue(report["final_summary"]["drift_detected"])
@@ -149,6 +151,7 @@ class CompareStagesTests(unittest.TestCase):
                 str(framework_path),
                 "--onnx-out",
                 str(onnx_path),
+                "--map-by-order",
                 "--out",
                 str(out_dir),
             ]
@@ -157,7 +160,38 @@ class CompareStagesTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         report = json.loads((out_dir / "report.json").read_text(encoding="utf-8"))
         warnings = report["warnings"]
-        self.assertTrue(any("mapped outputs by file order" in warning for warning in warnings))
+        self.assertTrue(any("--map-by-order was explicitly enabled" in warning for warning in warnings))
+
+    def test_compare_stages_rejects_name_mismatch_by_default(self) -> None:
+        temp_root = self._make_temp_root()
+        contract_path = temp_root / "contract.yaml"
+        image_path = temp_root / "sample.png"
+        framework_path = temp_root / "framework.npz"
+        onnx_path = temp_root / "onnx.npz"
+
+        contract_path.write_text(CONTRACT_TEXT, encoding="utf-8")
+        self._write_sample_image(image_path)
+        base = np.ones((1, 1, 6), dtype=np.float32)
+        self._write_stage_npz(framework_path, base, key="tensor_a")
+        self._write_stage_npz(onnx_path, base, key="tensor_b")
+
+        exit_code = main(
+            [
+                "compare-stages",
+                "--contract",
+                str(contract_path),
+                "--image",
+                str(image_path),
+                "--framework-out",
+                str(framework_path),
+                "--onnx-out",
+                str(onnx_path),
+                "--out",
+                str(temp_root / "out"),
+            ]
+        )
+
+        self.assertEqual(exit_code, 2)
 
     def test_compare_stages_requires_two_available_stages(self) -> None:
         temp_root = self._make_temp_root()
@@ -213,6 +247,46 @@ class CompareStagesTests(unittest.TestCase):
                 str(onnx_path),
                 "--out",
                 str(out_dir),
+            ]
+        )
+
+        self.assertEqual(exit_code, 2)
+
+    def test_compare_stages_rejects_contract_semantic_errors(self) -> None:
+        temp_root = self._make_temp_root()
+        contract_path = temp_root / "contract.yaml"
+        image_path = temp_root / "sample.png"
+        framework_path = temp_root / "framework.npz"
+        onnx_path = temp_root / "onnx.npz"
+        duplicate_output = """
+  - name: output0
+    shape: [1, 1, 6]
+    dtype: float32
+    layout: N/A
+    semantic: duplicate_predictions
+"""
+        contract_path.write_text(
+            CONTRACT_TEXT.replace("preprocess:\n", duplicate_output + "preprocess:\n"),
+            encoding="utf-8",
+        )
+        self._write_sample_image(image_path)
+        values = np.ones((1, 1, 6), dtype=np.float32)
+        self._write_stage_npz(framework_path, values)
+        self._write_stage_npz(onnx_path, values)
+
+        exit_code = main(
+            [
+                "compare-stages",
+                "--contract",
+                str(contract_path),
+                "--image",
+                str(image_path),
+                "--framework-out",
+                str(framework_path),
+                "--onnx-out",
+                str(onnx_path),
+                "--out",
+                str(temp_root / "out"),
             ]
         )
 
@@ -357,6 +431,153 @@ class CompareStagesTests(unittest.TestCase):
         self.assertEqual(diffs[0]["small_value_zero_fraction"], 1.0)
         self.assertTrue(any("quantization under-resolution" in reason for reason in diffs[0]["reasons"]))
 
+    def test_compare_stages_dequantizes_raw_int8_before_zero_collapse_diagnosis(self) -> None:
+        temp_root = self._make_temp_root()
+        contract_path = temp_root / "contract.yaml"
+        image_path = temp_root / "sample.png"
+        framework_path = temp_root / "framework.npz"
+        rknn_path = temp_root / "rknn.npz"
+        out_dir = temp_root / "out"
+
+        contract_path.write_text(CONTRACT_TEXT, encoding="utf-8")
+        self._write_sample_image(image_path)
+        reference = np.linspace(0.0005, 0.002, 6, dtype=np.float32).reshape(1, 1, 6)
+        write_tensor_artifact(
+            framework_path,
+            {"output0": reference},
+            stage="framework",
+            source="pytorch",
+        )
+        write_tensor_artifact(
+            rknn_path,
+            {"output0": np.full(reference.shape, -128, dtype=np.int8)},
+            stage="rknn",
+            source="rknn-runtime",
+            quantization={
+                "output0": {
+                    "scale": 2.9,
+                    "zero_point": -128,
+                    "qmin": -128,
+                    "qmax": 127,
+                }
+            },
+        )
+
+        exit_code = main(
+            [
+                "compare-stages",
+                "--contract",
+                str(contract_path),
+                "--image",
+                str(image_path),
+                "--framework-out",
+                str(framework_path),
+                "--rknn-out",
+                str(rknn_path),
+                "--out",
+                str(out_dir),
+            ]
+        )
+
+        self.assertEqual(exit_code, 0)
+        report = json.loads((out_dir / "report.json").read_text(encoding="utf-8"))
+        diff = report["pair_diffs"][0]
+        self.assertEqual(diff["comparison_domain"], "dequantized")
+        self.assertEqual(diff["left_raw_dtype"], "float32")
+        self.assertEqual(diff["right_raw_dtype"], "int8")
+        self.assertAlmostEqual(diff["max_abs_error"], 0.002)
+        self.assertEqual(diff["right_zero_fraction"], 1.0)
+        self.assertEqual(diff["under_resolution_count"], 6)
+        self.assertEqual(diff["under_resolution_zero_fraction"], 1.0)
+        self.assertAlmostEqual(diff["quantization_step_min"], 2.9)
+        self.assertEqual(diff["right_saturation_fraction"], 0.0)
+        self.assertTrue(any("quantization under-resolution" in reason for reason in diff["reasons"]))
+        rknn = next(stage for stage in report["stages"] if stage["stage"] == "rknn")
+        self.assertEqual(rknn["outputs"][0]["quantization"]["zero_point"], -128)
+        self.assertEqual(rknn["outputs"][0]["summary_domain"], "raw")
+        self.assertEqual(rknn["outputs"][0]["zero_fraction"], 0.0)
+        self.assertEqual(rknn["outputs"][0]["dequantized_zero_fraction"], 1.0)
+        self.assertEqual(rknn["outputs"][0]["saturation_fraction"], 0.0)
+
+    def test_compare_stages_rejects_raw_integer_without_quantization_metadata(self) -> None:
+        temp_root = self._make_temp_root()
+        contract_path = temp_root / "contract.yaml"
+        image_path = temp_root / "sample.png"
+        framework_path = temp_root / "framework.npz"
+        rknn_path = temp_root / "rknn.npz"
+
+        contract_path.write_text(CONTRACT_TEXT, encoding="utf-8")
+        self._write_sample_image(image_path)
+        self._write_stage_npz(framework_path, np.ones((1, 1, 6), dtype=np.float32))
+        self._write_stage_npz(rknn_path, np.ones((1, 1, 6), dtype=np.int8))
+
+        exit_code = main(
+            [
+                "compare-stages",
+                "--contract",
+                str(contract_path),
+                "--image",
+                str(image_path),
+                "--framework-out",
+                str(framework_path),
+                "--rknn-out",
+                str(rknn_path),
+                "--out",
+                str(temp_root / "out"),
+            ]
+        )
+
+        self.assertEqual(exit_code, 2)
+
+    def test_compare_stages_reports_artifact_source_and_provenance_conflicts(self) -> None:
+        temp_root = self._make_temp_root()
+        contract_path = temp_root / "contract.yaml"
+        image_path = temp_root / "sample.png"
+        framework_path = temp_root / "framework.npz"
+        rknn_path = temp_root / "rknn.npz"
+        out_dir = temp_root / "out"
+
+        contract_path.write_text(CONTRACT_TEXT, encoding="utf-8")
+        self._write_sample_image(image_path)
+        values = np.ones((1, 1, 6), dtype=np.float32)
+        write_tensor_artifact(
+            framework_path,
+            {"output0": values},
+            stage="framework",
+            source="pytorch 2.7",
+            provenance={"input_id": "frame-a", "model_id": "detector"},
+        )
+        write_tensor_artifact(
+            rknn_path,
+            {"output0": values},
+            stage="rknn",
+            source="rknn-runtime 2.3.2",
+            provenance={"input_id": "frame-b", "model_id": "detector"},
+        )
+
+        exit_code = main(
+            [
+                "compare-stages",
+                "--contract",
+                str(contract_path),
+                "--image",
+                str(image_path),
+                "--framework-out",
+                str(framework_path),
+                "--rknn-out",
+                str(rknn_path),
+                "--out",
+                str(out_dir),
+            ]
+        )
+
+        self.assertEqual(exit_code, 0)
+        report = json.loads((out_dir / "report.json").read_text(encoding="utf-8"))
+        framework = next(stage for stage in report["stages"] if stage["stage"] == "framework")
+        self.assertEqual(framework["artifact_source"], "pytorch 2.7")
+        self.assertEqual(framework["provenance"]["model_id"], "detector")
+        self.assertTrue(any("provenance mismatch for input_id" in warning for warning in report["warnings"]))
+
     def test_compare_stages_does_not_flag_small_values_that_are_preserved(self) -> None:
         temp_root = self._make_temp_root()
         contract_path = temp_root / "contract.yaml"
@@ -392,6 +613,175 @@ class CompareStagesTests(unittest.TestCase):
         self.assertEqual(diffs[0]["status"], "aligned")
         self.assertEqual(diffs[0]["small_value_zero_fraction"], 0.0)
         self.assertFalse(any("under-resolution" in reason for reason in diffs[0]["reasons"]))
+
+    def test_compare_stages_reports_non_finite_values_without_invalid_json(self) -> None:
+        temp_root = self._make_temp_root()
+        contract_path = temp_root / "contract.yaml"
+        image_path = temp_root / "sample.png"
+        framework_path = temp_root / "framework.npz"
+        rknn_path = temp_root / "rknn.npz"
+        out_dir = temp_root / "out"
+
+        contract_path.write_text(CONTRACT_TEXT, encoding="utf-8")
+        self._write_sample_image(image_path)
+        reference = np.asarray([[[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]]], dtype=np.float32)
+        candidate = reference.copy()
+        candidate[0, 0, 1] = np.nan
+        candidate[0, 0, 2] = np.inf
+        self._write_stage_npz(framework_path, reference)
+        self._write_stage_npz(rknn_path, candidate)
+
+        exit_code = main(
+            [
+                "compare-stages",
+                "--contract",
+                str(contract_path),
+                "--image",
+                str(image_path),
+                "--framework-out",
+                str(framework_path),
+                "--rknn-out",
+                str(rknn_path),
+                "--out",
+                str(out_dir),
+            ]
+        )
+
+        self.assertEqual(exit_code, 0)
+        raw_report = (out_dir / "report.json").read_text(encoding="utf-8")
+        self.assertNotIn(": NaN", raw_report)
+        self.assertNotIn(": Infinity", raw_report)
+        report = json.loads(raw_report)
+        rknn = next(stage for stage in report["stages"] if stage["stage"] == "rknn")
+        self.assertEqual(rknn["outputs"][0]["nan_count"], 1)
+        self.assertEqual(rknn["outputs"][0]["positive_inf_count"], 1)
+        diff = report["pair_diffs"][0]
+        self.assertEqual(diff["right_nan_count"], 1)
+        self.assertEqual(diff["right_inf_count"], 1)
+        self.assertTrue(any("candidate contains non-finite" in reason for reason in diff["reasons"]))
+
+    def test_compare_stages_thresholds_are_configurable(self) -> None:
+        temp_root = self._make_temp_root()
+        contract_path = temp_root / "contract.yaml"
+        image_path = temp_root / "sample.png"
+        framework_path = temp_root / "framework.npz"
+        onnx_path = temp_root / "onnx.npz"
+        out_dir = temp_root / "out"
+
+        contract_path.write_text(CONTRACT_TEXT, encoding="utf-8")
+        self._write_sample_image(image_path)
+        reference = np.asarray([[[0.1, 0.2, 0.3, 0.4, 0.5, 0.6]]], dtype=np.float32)
+        self._write_stage_npz(framework_path, reference)
+        self._write_stage_npz(onnx_path, reference + 0.01)
+
+        exit_code = main(
+            [
+                "compare-stages",
+                "--contract",
+                str(contract_path),
+                "--image",
+                str(image_path),
+                "--framework-out",
+                str(framework_path),
+                "--onnx-out",
+                str(onnx_path),
+                "--max-abs-error",
+                "1",
+                "--min-cosine-similarity",
+                "0",
+                "--max-mean-relative-error",
+                "1",
+                "--out",
+                str(out_dir),
+            ]
+        )
+
+        self.assertEqual(exit_code, 0)
+        report = json.loads((out_dir / "report.json").read_text(encoding="utf-8"))
+        self.assertEqual(report["pair_diffs"][0]["status"], "aligned")
+        self.assertEqual(report["comparison_thresholds"]["max_abs_error"], 1.0)
+
+    def test_compare_stages_rejects_non_finite_thresholds(self) -> None:
+        temp_root = self._make_temp_root()
+        contract_path = temp_root / "contract.yaml"
+        image_path = temp_root / "sample.png"
+        framework_path = temp_root / "framework.npz"
+        onnx_path = temp_root / "onnx.npz"
+
+        contract_path.write_text(CONTRACT_TEXT, encoding="utf-8")
+        self._write_sample_image(image_path)
+        values = np.ones((1, 1, 6), dtype=np.float32)
+        self._write_stage_npz(framework_path, values)
+        self._write_stage_npz(onnx_path, values)
+
+        exit_code = main(
+            [
+                "compare-stages",
+                "--contract",
+                str(contract_path),
+                "--image",
+                str(image_path),
+                "--framework-out",
+                str(framework_path),
+                "--onnx-out",
+                str(onnx_path),
+                "--max-abs-error",
+                "nan",
+                "--out",
+                str(temp_root / "out"),
+            ]
+        )
+
+        self.assertEqual(exit_code, 2)
+
+    def test_compare_stages_flags_integer_saturation(self) -> None:
+        temp_root = self._make_temp_root()
+        contract_path = temp_root / "contract.yaml"
+        image_path = temp_root / "sample.png"
+        framework_path = temp_root / "framework.npz"
+        rknn_path = temp_root / "rknn.npz"
+        out_dir = temp_root / "out"
+
+        contract_path.write_text(CONTRACT_TEXT, encoding="utf-8")
+        self._write_sample_image(image_path)
+        reference = np.linspace(-100, 100, 64).astype(np.int8).reshape(1, 1, 64)
+        candidate = reference.copy()
+        candidate[..., 32:] = np.int8(127)
+        write_tensor_artifact(
+            framework_path,
+            {"output0": reference},
+            stage="framework",
+            source="test",
+            quantization={"output0": {"scale": 1.0, "zero_point": 0}},
+        )
+        write_tensor_artifact(
+            rknn_path,
+            {"output0": candidate},
+            stage="rknn",
+            source="test",
+            quantization={"output0": {"scale": 1.0, "zero_point": 0}},
+        )
+
+        exit_code = main(
+            [
+                "compare-stages",
+                "--contract",
+                str(contract_path),
+                "--image",
+                str(image_path),
+                "--framework-out",
+                str(framework_path),
+                "--rknn-out",
+                str(rknn_path),
+                "--out",
+                str(out_dir),
+            ]
+        )
+
+        self.assertEqual(exit_code, 0)
+        diffs = json.loads((out_dir / "tensor_diffs.json").read_text(encoding="utf-8"))
+        self.assertGreater(diffs[0]["right_saturation_fraction"], 0.4)
+        self.assertTrue(any("possible integer saturation" in reason for reason in diffs[0]["reasons"]))
 
     def test_compare_stages_onnx_model_requires_onnxruntime(self) -> None:
         temp_root = self._make_temp_root()
@@ -497,7 +887,8 @@ class CompareStagesTests(unittest.TestCase):
         self.assertEqual(framework_stage["source_kind"], "runner:pytorch")
         self.assertIn("mock framework runner", framework_stage["warnings"])
         self.assertEqual(report["final_summary"]["available_stages"], ["framework", "onnx"])
-        self.assertEqual(report["final_summary"]["warning_count"], 1)
+        self.assertEqual(report["final_summary"]["warning_count"], 2)
+        self.assertTrue(any("contract warning nms.missing" in warning for warning in report["warnings"]))
 
     def test_compare_stages_onnx_model_path_can_be_mocked(self) -> None:
         temp_root = self._make_temp_root()

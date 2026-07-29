@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Literal
 
 
+INSPECTION_REPORT_SCHEMA_VERSION = "tensorfence.inspection-report/v1"
+
+
 @dataclass(frozen=True)
 class InspectionCheck:
     name: str
@@ -33,6 +36,7 @@ class InspectionReport:
     tensor_summary: dict
     checks: list[InspectionCheck]
     artifacts: InspectionArtifactPaths
+    schema_version: str = INSPECTION_REPORT_SCHEMA_VERSION
 
 
 def _to_dict(report: InspectionReport) -> dict:

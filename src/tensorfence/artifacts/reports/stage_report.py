@@ -6,6 +6,11 @@ from pathlib import Path
 from typing import Literal
 
 
+STAGE_REPORT_SCHEMA_VERSION = "tensorfence.stage-report/v1"
+STAGE_DIFF_SCHEMA_VERSION = "tensorfence.tensor-diff/v1"
+STAGE_SUMMARY_SCHEMA_VERSION = "tensorfence.stage-summary/v1"
+
+
 @dataclass(frozen=True)
 class StageTensorSummaryEntry:
     name: str
@@ -15,6 +20,18 @@ class StageTensorSummaryEntry:
     maximum: float | None
     mean: float | None
     std: float | None
+    zero_fraction: float | None
+    finite_fraction: float | None
+    nan_count: int
+    positive_inf_count: int
+    negative_inf_count: int
+    saturation_fraction: float | None
+    clipping_fraction: float | None
+    quantization: dict[str, object] | None
+    summary_domain: Literal["raw"]
+    dequantized_minimum: float | None
+    dequantized_maximum: float | None
+    dequantized_zero_fraction: float | None
 
 
 @dataclass(frozen=True)
@@ -22,6 +39,8 @@ class StageRecord:
     stage: Literal["framework", "onnx", "rknn"]
     source_kind: str
     source_path: str | None
+    artifact_source: str | None
+    provenance: dict[str, object]
     available: bool
     warnings: list[str]
     outputs: list[StageTensorSummaryEntry]
@@ -40,11 +59,32 @@ class StagePairDiffEntry:
     rms_error: float | None
     cosine_similarity: float | None
     reasons: list[str]
+    comparison_domain: Literal["raw", "dequantized"] = "raw"
+    left_raw_dtype: str | None = None
+    right_raw_dtype: str | None = None
+    max_relative_error: float | None = None
+    mean_relative_error: float | None = None
+    left_zero_fraction: float | None = None
     right_zero_fraction: float | None = None
+    left_nan_count: int = 0
+    right_nan_count: int = 0
+    left_inf_count: int = 0
+    right_inf_count: int = 0
+    finite_pair_fraction: float | None = None
+    left_saturation_fraction: float | None = None
+    right_saturation_fraction: float | None = None
+    left_clipping_fraction: float | None = None
+    right_clipping_fraction: float | None = None
     small_value_threshold: float | None = None
     small_value_count: int | None = None
     small_value_fraction: float | None = None
     small_value_zero_fraction: float | None = None
+    quantization_step_min: float | None = None
+    quantization_step_max: float | None = None
+    under_resolution_count: int | None = None
+    under_resolution_fraction: float | None = None
+    under_resolution_zero_fraction: float | None = None
+    schema_version: str = STAGE_DIFF_SCHEMA_VERSION
 
 
 @dataclass(frozen=True)
@@ -55,6 +95,7 @@ class StageFinalSummary:
     first_drift_stage: str | None
     first_drift_pair: str | None
     warning_count: int
+    schema_version: str = STAGE_SUMMARY_SCHEMA_VERSION
 
 
 @dataclass(frozen=True)
@@ -67,6 +108,8 @@ class StageCompareReport:
     pair_diffs: list[StagePairDiffEntry]
     final_summary: StageFinalSummary
     warnings: list[str]
+    comparison_thresholds: dict[str, float | int | None]
+    schema_version: str = STAGE_REPORT_SCHEMA_VERSION
 
 
 def _to_dict(report: StageCompareReport) -> dict:
@@ -76,7 +119,10 @@ def _to_dict(report: StageCompareReport) -> dict:
 def write_stage_report_json(report: StageCompareReport, path: str | Path) -> Path:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(_to_dict(report), indent=2, ensure_ascii=False), encoding="utf-8")
+    target.write_text(
+        json.dumps(_to_dict(report), indent=2, ensure_ascii=False, allow_nan=False),
+        encoding="utf-8",
+    )
     return target
 
 
@@ -94,7 +140,8 @@ def write_stage_report_markdown(report: StageCompareReport, path: str | Path) ->
     ]
     for stage in report.stages:
         lines.append(
-            f"- `{stage.stage}` [{('available' if stage.available else 'skipped')}] via `{stage.source_kind}` path=`{stage.source_path}`"
+            f"- `{stage.stage}` [{('available' if stage.available else 'skipped')}] via `{stage.source_kind}` "
+            f"path=`{stage.source_path}` artifact_source=`{stage.artifact_source}`"
         )
         for output in stage.outputs:
             lines.append(
@@ -108,8 +155,12 @@ def write_stage_report_markdown(report: StageCompareReport, path: str | Path) ->
         lines.append(
             f"- `{diff.left_stage}->{diff.right_stage}` `{diff.tensor_name}` [{diff.status}] "
             f"max_abs=`{diff.max_abs_error}` mean_abs=`{diff.mean_abs_error}` rms=`{diff.rms_error}` "
-            f"cosine=`{diff.cosine_similarity}` right_zero=`{diff.right_zero_fraction}` "
-            f"small_zero=`{diff.small_value_zero_fraction}`"
+            f"cosine=`{diff.cosine_similarity}` mean_relative=`{diff.mean_relative_error}` "
+            f"domain=`{diff.comparison_domain}` raw_dtypes=`{diff.left_raw_dtype}/{diff.right_raw_dtype}` "
+            f"left_zero=`{diff.left_zero_fraction}` right_zero=`{diff.right_zero_fraction}` "
+            f"small_zero=`{diff.small_value_zero_fraction}` "
+            f"quant_step=`{diff.quantization_step_min}/{diff.quantization_step_max}` "
+            f"under_resolution_zero=`{diff.under_resolution_zero_fraction}`"
         )
         for reason in diff.reasons:
             lines.append(f"  - {reason}")
@@ -158,12 +209,18 @@ def write_stage_report_html(report: StageCompareReport, path: str | Path) -> Pat
 def write_tensor_diffs_json(pair_diffs: list[StagePairDiffEntry], path: str | Path) -> Path:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps([asdict(item) for item in pair_diffs], indent=2, ensure_ascii=False), encoding="utf-8")
+    target.write_text(
+        json.dumps([asdict(item) for item in pair_diffs], indent=2, ensure_ascii=False, allow_nan=False),
+        encoding="utf-8",
+    )
     return target
 
 
 def write_final_summary_json(summary: StageFinalSummary, path: str | Path) -> Path:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(asdict(summary), indent=2, ensure_ascii=False), encoding="utf-8")
+    target.write_text(
+        json.dumps(asdict(summary), indent=2, ensure_ascii=False, allow_nan=False),
+        encoding="utf-8",
+    )
     return target

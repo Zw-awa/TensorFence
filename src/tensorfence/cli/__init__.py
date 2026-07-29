@@ -14,6 +14,7 @@ from ..core.templates import SAMPLE_CONTRACT_YAML
 from ..core.validation import has_errors, validate_contract
 from .compare_stages import build_parser as build_compare_stages_parser
 from .draft_contract import build_parser as build_draft_contract_parser
+from .dump_tensors import build_parser as build_dump_tensors_parser
 from .inspect_image import build_parser as build_inspect_image_parser
 from .probe_model import build_parser as build_probe_model_parser
 
@@ -35,8 +36,10 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
         f"onnxruntime: {_module_status('onnxruntime')}",
         f"jinja2: {_module_status('jinja2')}",
         "",
-        "Available commands: doctor, check-contract, init, inspect-image, probe-model, draft-contract, compare-stages.",
-        "Foundation status: adapters and stage runners are not wired yet.",
+        "Available commands: doctor, check-contract, init, inspect-image, probe-model, draft-contract, "
+        "dump-tensors, compare-stages.",
+        "MVP status: ONNX direct execution and artifact comparison are ready; "
+        "direct framework/RKNN execution is not implemented.",
     ]
     print("\n".join(lines))
     return 0
@@ -85,6 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_inspect_image_parser(subparsers)
     build_probe_model_parser(subparsers)
     build_draft_contract_parser(subparsers)
+    build_dump_tensors_parser(subparsers)
     build_compare_stages_parser(subparsers)
 
     return parser

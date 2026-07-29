@@ -17,6 +17,7 @@ from ..artifacts.reports.inspection_report import (
 from .contracts import load_contract
 from .diff import summarize_array
 from .preprocess import PreprocessError, PreprocessResult, prepare_image, save_preview_image
+from .validation import has_errors, validate_contract
 
 
 class ImageInspectionError(RuntimeError):
@@ -88,6 +89,14 @@ def inspect_image(
 
     try:
         contract = load_contract(contract_path)
+        contract_issues = validate_contract(contract)
+        if has_errors(contract_issues):
+            details = "; ".join(
+                f"{issue.code} ({issue.field}): {issue.message}"
+                for issue in contract_issues
+                if issue.severity == "error"
+            )
+            raise ImageInspectionError(f"contract has validation errors: {details}")
         result = prepare_image(contract, image_path)
     except (OSError, PreprocessError, RuntimeError) as exc:
         raise ImageInspectionError(str(exc)) from exc

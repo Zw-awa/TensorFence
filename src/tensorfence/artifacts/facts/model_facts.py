@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Any
 
 
+MODEL_FACTS_SCHEMA_VERSION = "tensorfence.model-facts/v1"
+
+
 @dataclass(frozen=True)
 class TensorFact:
     name: str
@@ -38,6 +41,7 @@ class ModelFacts:
     nodes: list[NodeFact]
     operator_histogram: dict[str, int]
     warnings: list[str]
+    schema_version: str = MODEL_FACTS_SCHEMA_VERSION
 
 
 def model_facts_to_dict(model_facts: ModelFacts) -> dict[str, Any]:
@@ -46,6 +50,9 @@ def model_facts_to_dict(model_facts: ModelFacts) -> dict[str, Any]:
 
 def model_facts_from_dict(data: dict[str, Any]) -> ModelFacts:
     try:
+        schema_version = str(data.get("schema_version", MODEL_FACTS_SCHEMA_VERSION))
+        if schema_version != MODEL_FACTS_SCHEMA_VERSION:
+            raise ValueError(f"unsupported model facts schema_version: {schema_version!r}")
         return ModelFacts(
             format=str(data["format"]),
             model_path=str(data["model_path"]),
@@ -98,6 +105,7 @@ def model_facts_from_dict(data: dict[str, Any]) -> ModelFacts:
             ],
             operator_histogram={str(key): int(value) for key, value in data.get("operator_histogram", {}).items()},
             warnings=[str(item) for item in data.get("warnings", [])],
+            schema_version=schema_version,
         )
     except KeyError as exc:
         raise ValueError(f"model facts are missing required key: {exc.args[0]}") from exc
@@ -127,6 +135,7 @@ def write_ops_summary_json(model_facts: ModelFacts, path: str | Path) -> Path:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     summary = {
+        "schema_version": "tensorfence.ops-summary/v1",
         "format": model_facts.format,
         "model_path": model_facts.model_path,
         "node_count": len(model_facts.nodes),

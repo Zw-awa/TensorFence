@@ -21,9 +21,19 @@ def _import_onnxruntime():
     return ort
 
 
-def load_onnx_outputs(path: str | Path, expected_names: list[str]) -> tuple[dict[str, np.ndarray], list[str]]:
+def load_onnx_outputs(
+    path: str | Path,
+    expected_names: list[str],
+    *,
+    map_by_order: bool = False,
+) -> tuple[dict[str, np.ndarray], list[str]]:
     try:
-        return load_npz_outputs(path, expected_names)
+        return load_npz_outputs(
+            path,
+            expected_names,
+            map_by_order=map_by_order,
+            expected_stage="onnx",
+        )
     except NpzAdapterError as exc:
         raise OnnxRuntimeAdapterError(str(exc)) from exc
 

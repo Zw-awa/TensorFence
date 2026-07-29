@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Literal
+
+import numpy as np
 
 from ..adapters.framework import FrameworkAdapterError, load_framework_outputs, run_framework_outputs
 from ..adapters.onnxruntime import OnnxRuntimeAdapterError, load_onnx_outputs, run_onnx_model
@@ -19,9 +22,11 @@ from ..artifacts.reports.stage_report import (
     write_stage_report_markdown,
     write_tensor_diffs_json,
 )
+from ..artifacts.tensor_artifact import QuantizationMetadata, TensorArtifactError, load_tensor_artifact
 from .contracts import load_contract
 from .diff import TensorDiff, compare_arrays, summarize_array
 from .preprocess import PreprocessError, prepare_image
+from .validation import has_errors, validate_contract
 
 
 class StageCompareError(RuntimeError):
@@ -38,11 +43,81 @@ class StageCompareArtifacts:
 
 
 @dataclass(frozen=True)
+class ComparisonThresholds:
+    max_abs_error: float = 1e-3
+    min_cosine_similarity: float = 0.999
+    max_mean_relative_error: float = 0.05
+    relative_error_epsilon: float = 1e-12
+    small_value_threshold: float | None = None
+    small_value_relative_threshold: float = 1e-4
+    small_value_min_threshold: float = 1e-6
+    small_value_max_threshold: float = 1e-3
+    small_value_min_count: int = 4
+    small_value_min_fraction: float = 0.01
+    small_value_zero_fraction: float = 0.95
+    clipping_ratio_threshold: float = 0.1
+    clipping_ratio_increase: float = 0.05
+    clipping_min_count: int = 32
+
+    def validate(self) -> None:
+        numeric = {
+            "max_abs_error": self.max_abs_error,
+            "min_cosine_similarity": self.min_cosine_similarity,
+            "max_mean_relative_error": self.max_mean_relative_error,
+            "relative_error_epsilon": self.relative_error_epsilon,
+            "small_value_relative_threshold": self.small_value_relative_threshold,
+            "small_value_min_threshold": self.small_value_min_threshold,
+            "small_value_max_threshold": self.small_value_max_threshold,
+            "small_value_min_fraction": self.small_value_min_fraction,
+            "small_value_zero_fraction": self.small_value_zero_fraction,
+            "clipping_ratio_threshold": self.clipping_ratio_threshold,
+            "clipping_ratio_increase": self.clipping_ratio_increase,
+        }
+        if self.small_value_threshold is not None:
+            numeric["small_value_threshold"] = self.small_value_threshold
+        for name, value in numeric.items():
+            if not math.isfinite(value):
+                raise StageCompareError(f"comparison threshold {name} must be finite")
+        for name in {
+            "max_abs_error",
+            "max_mean_relative_error",
+            "relative_error_epsilon",
+            "small_value_relative_threshold",
+            "small_value_min_threshold",
+            "small_value_max_threshold",
+            "small_value_threshold",
+            "clipping_ratio_increase",
+        }:
+            if name not in numeric:
+                continue
+            value = numeric[name]
+            if value < 0:
+                raise StageCompareError(f"comparison threshold {name} must be nonnegative")
+        if self.relative_error_epsilon <= 0:
+            raise StageCompareError("comparison threshold relative_error_epsilon must be positive")
+        if self.small_value_min_threshold > self.small_value_max_threshold:
+            raise StageCompareError("small_value_min_threshold cannot exceed small_value_max_threshold")
+        for name, value in {
+            "min_cosine_similarity": self.min_cosine_similarity,
+            "small_value_min_fraction": self.small_value_min_fraction,
+            "small_value_zero_fraction": self.small_value_zero_fraction,
+            "clipping_ratio_threshold": self.clipping_ratio_threshold,
+        }.items():
+            if not 0 <= value <= 1:
+                raise StageCompareError(f"comparison threshold {name} must be between 0 and 1")
+        if self.small_value_min_count < 1 or self.clipping_min_count < 1:
+            raise StageCompareError("comparison count thresholds must be positive")
+
+
+@dataclass(frozen=True)
 class _ResolvedStage:
     stage: Literal["framework", "onnx", "rknn"]
     source_kind: str
     source_path: str | None
     outputs: dict[str, object]
+    quantization: dict[str, QuantizationMetadata]
+    artifact_source: str | None
+    provenance: dict[str, object]
     warnings: list[str]
     available: bool
 
@@ -51,27 +126,79 @@ def _coerce_outputs(
     outputs: dict[str, object],
     expected_names: list[str],
     stage_name: str,
+    map_by_order: bool,
 ) -> tuple[dict[str, object], list[str]]:
     warnings: list[str] = []
-    if all(name in outputs for name in expected_names):
+    if set(outputs) == set(expected_names):
         return {name: outputs[name] for name in expected_names}, warnings
 
     keys = list(outputs.keys())
-    if len(keys) == len(expected_names):
+    if map_by_order and len(keys) == len(expected_names):
         warnings.append(
-            f"{stage_name} output names {keys} do not match contract outputs {expected_names}; mapped outputs by order"
+            f"{stage_name} output names {keys} do not match contract outputs {expected_names}; "
+            "mapped outputs by order because --map-by-order was explicitly enabled"
         )
         return {expected_names[index]: outputs[key] for index, key in enumerate(keys)}, warnings
 
     raise StageCompareError(
-        f"{stage_name} outputs {keys} do not match expected outputs {expected_names}; provide aligned stage artifacts"
+        f"{stage_name} outputs {keys} do not match expected outputs {expected_names}; "
+        "rename outputs or explicitly opt in with --map-by-order"
+    )
+
+
+@dataclass(frozen=True)
+class _ArtifactMetadata:
+    quantization: dict[str, QuantizationMetadata]
+    source: str | None
+    provenance: dict[str, object]
+
+
+def _load_artifact_metadata(
+    path: str | Path,
+    expected_names: list[str],
+    map_by_order: bool,
+) -> _ArtifactMetadata:
+    try:
+        artifact = load_tensor_artifact(path)
+    except TensorArtifactError as exc:
+        raise StageCompareError(str(exc)) from exc
+    if artifact.manifest is None:
+        return _ArtifactMetadata({}, None, {})
+
+    records = {record.name: record.quantization for record in artifact.manifest.tensors}
+    keys = list(artifact.tensors)
+    if set(keys) == set(expected_names):
+        quantization = {
+            name: records[name]
+            for name in expected_names
+            if records.get(name) is not None
+        }
+    elif map_by_order and len(keys) == len(expected_names):
+        quantization = {
+            expected_names[index]: records[key]
+            for index, key in enumerate(keys)
+            if records.get(key) is not None
+        }
+    else:
+        quantization = {}
+    return _ArtifactMetadata(
+        quantization=quantization,
+        source=artifact.manifest.source,
+        provenance=dict(artifact.manifest.provenance),
     )
 
 
 def _make_stage_record(stage: _ResolvedStage) -> StageRecord:
     outputs = []
     for name, value in stage.outputs.items():
-        summary = summarize_array(value)
+        quantization = stage.quantization.get(name)
+        raw_values = np.asarray(value)
+        summary = summarize_array(raw_values)
+        dequantized_summary = (
+            summarize_array(_dequantize(raw_values, quantization))
+            if quantization is not None
+            else None
+        )
         outputs.append(
             StageTensorSummaryEntry(
                 name=name,
@@ -81,41 +208,258 @@ def _make_stage_record(stage: _ResolvedStage) -> StageRecord:
                 maximum=summary.maximum,
                 mean=summary.mean,
                 std=summary.std,
+                zero_fraction=summary.zero_fraction,
+                finite_fraction=summary.finite_fraction,
+                nan_count=summary.nan_count,
+                positive_inf_count=summary.positive_inf_count,
+                negative_inf_count=summary.negative_inf_count,
+                saturation_fraction=_raw_saturation_fraction(raw_values, quantization),
+                clipping_fraction=summary.clipping_fraction,
+                quantization=quantization.to_dict() if quantization is not None else None,
+                summary_domain="raw",
+                dequantized_minimum=(dequantized_summary.minimum if dequantized_summary else None),
+                dequantized_maximum=(dequantized_summary.maximum if dequantized_summary else None),
+                dequantized_zero_fraction=(dequantized_summary.zero_fraction if dequantized_summary else None),
             )
         )
     return StageRecord(
         stage=stage.stage,
         source_kind=stage.source_kind,
         source_path=stage.source_path,
+        artifact_source=stage.artifact_source,
+        provenance=stage.provenance,
         available=stage.available,
         warnings=stage.warnings,
         outputs=outputs,
     )
 
 
-def _diff_status(diff: TensorDiff) -> tuple[str, list[str]]:
+def _with_contract_warnings(stage: _ResolvedStage, output_specs) -> _ResolvedStage:
+    if not stage.available:
+        return stage
+    warnings = list(stage.warnings)
+    for spec in output_specs:
+        value = stage.outputs[spec.name]
+        actual_shape = [int(dim) for dim in getattr(value, "shape", ())]
+        actual_dtype = str(getattr(value, "dtype", "unknown"))
+        if actual_shape != spec.shape:
+            warnings.append(
+                f"{stage.stage} tensor {spec.name!r} shape {actual_shape} does not match contract {spec.shape}"
+            )
+        if spec.name in stage.quantization:
+            warnings.append(
+                f"{stage.stage} tensor {spec.name!r} uses raw {actual_dtype} values; "
+                "numerical comparison dequantizes them with artifact scale/zero_point metadata"
+            )
+        elif actual_dtype != spec.dtype:
+            warnings.append(
+                f"{stage.stage} tensor {spec.name!r} dtype {actual_dtype!r} does not match contract {spec.dtype!r}"
+            )
+    return replace(stage, warnings=warnings)
+
+
+def _quantization_parameter(
+    value: float | int | list[float] | list[int],
+    metadata: QuantizationMetadata,
+    rank: int,
+) -> float | np.ndarray:
+    values = np.asarray(value, dtype=np.float64)
+    if values.size == 1:
+        return float(values.reshape(-1)[0])
+    if metadata.axis is None:
+        raise StageCompareError("per-channel quantization metadata requires axis")
+    axis = metadata.axis % rank
+    shape = [1] * rank
+    shape[axis] = values.size
+    return values.reshape(shape)
+
+
+def _dequantize(values: np.ndarray, metadata: QuantizationMetadata) -> np.ndarray:
+    scale = _quantization_parameter(metadata.scale, metadata, values.ndim)
+    zero_point = _quantization_parameter(metadata.zero_point, metadata, values.ndim)
+    return (values.astype(np.float64) - zero_point) * scale
+
+
+def _raw_saturation_fraction(
+    values: np.ndarray,
+    metadata: QuantizationMetadata | None,
+) -> float | None:
+    if values.size == 0 or not np.issubdtype(values.dtype, np.integer):
+        return None
+    limits = np.iinfo(values.dtype)
+    qmin = metadata.qmin if metadata is not None and metadata.qmin is not None else limits.min
+    qmax = metadata.qmax if metadata is not None and metadata.qmax is not None else limits.max
+    saturated = (values == qmin) | (values == qmax)
+    if metadata is not None:
+        zero_point = _quantization_parameter(metadata.zero_point, metadata, values.ndim)
+        saturated &= values != zero_point
+    return float(np.mean(saturated))
+
+
+def _comparison_arrays(
+    left: _ResolvedStage,
+    right: _ResolvedStage,
+    tensor_name: str,
+) -> tuple[np.ndarray, np.ndarray, str, float | None, float | None]:
+    left_raw = np.asarray(left.outputs[tensor_name])
+    right_raw = np.asarray(right.outputs[tensor_name])
+    left_quantization = left.quantization.get(tensor_name)
+    right_quantization = right.quantization.get(tensor_name)
+    left_integer = np.issubdtype(left_raw.dtype, np.integer)
+    right_integer = np.issubdtype(right_raw.dtype, np.integer)
+
+    if (left_integer and left_quantization is None) or (right_integer and right_quantization is None):
+        raise StageCompareError(
+            f"cannot compare raw integer tensor {tensor_name!r} without quantization metadata; "
+            "capture dequantized float output or provide scale/zero_point in every canonical integer artifact"
+        )
+
+    left_values = _dequantize(left_raw, left_quantization) if left_quantization is not None else left_raw
+    right_values = _dequantize(right_raw, right_quantization) if right_quantization is not None else right_raw
+    comparison_domain = "raw"
+    if left_quantization is not None or right_quantization is not None:
+        left_values = left_values.astype(np.float64, copy=False)
+        right_values = right_values.astype(np.float64, copy=False)
+        comparison_domain = "dequantized"
+
+    return (
+        left_values,
+        right_values,
+        comparison_domain,
+        _raw_saturation_fraction(left_raw, left_quantization),
+        _raw_saturation_fraction(right_raw, right_quantization),
+    )
+
+
+def _with_quantization_resolution(
+    diff: TensorDiff,
+    left_values: np.ndarray,
+    right_values: np.ndarray,
+    metadata: QuantizationMetadata | None,
+) -> TensorDiff:
+    if metadata is None or not diff.shape_match or left_values.size == 0:
+        return diff
+
+    scale = _quantization_parameter(metadata.scale, metadata, left_values.ndim)
+    scale_values = np.broadcast_to(np.asarray(scale, dtype=np.float64), left_values.shape)
+    left_numeric = left_values.astype(np.float64, copy=False)
+    right_numeric = right_values.astype(np.float64, copy=False)
+    mask = (
+        np.isfinite(left_numeric)
+        & np.isfinite(right_numeric)
+        & (left_numeric != 0)
+        & (np.abs(left_numeric) < scale_values * 0.5)
+    )
+    count = int(np.count_nonzero(mask))
+    zero_fraction = float(np.mean(right_numeric[mask] == 0)) if count else None
+    return replace(
+        diff,
+        quantization_step_min=float(np.min(scale_values)),
+        quantization_step_max=float(np.max(scale_values)),
+        under_resolution_count=count,
+        under_resolution_fraction=float(count / left_values.size),
+        under_resolution_zero_fraction=zero_fraction,
+    )
+
+
+_PROVENANCE_IDENTITY_KEYS = (
+    "input_id",
+    "input_path",
+    "input_sha256",
+    "sample_id",
+    "preprocess_id",
+    "contract_id",
+    "model_id",
+    "model_revision",
+)
+
+
+def _provenance_conflict_warnings(stages: list[_ResolvedStage]) -> list[str]:
+    warnings: list[str] = []
+    for key in _PROVENANCE_IDENTITY_KEYS:
+        values = [(stage.stage, stage.provenance[key]) for stage in stages if key in stage.provenance]
+        if len(values) < 2:
+            continue
+        first_value = values[0][1]
+        if any(value != first_value for _, value in values[1:]):
+            details = ", ".join(f"{stage}={value!r}" for stage, value in values)
+            warnings.append(f"artifact provenance mismatch for {key}: {details}")
+    return warnings
+
+
+def _diff_status(diff: TensorDiff, thresholds: ComparisonThresholds, element_count: int) -> tuple[str, list[str]]:
     reasons: list[str] = []
     if not diff.shape_match:
         reasons.append("shape mismatch")
         return "shape_mismatch", reasons
     if not diff.dtype_match:
         reasons.append("dtype mismatch")
-    if diff.max_abs_error is not None and diff.max_abs_error > 1e-3:
-        reasons.append(f"max_abs_error>{1e-3}")
-    if diff.cosine_similarity is not None and diff.cosine_similarity < 0.999:
-        reasons.append(f"cosine_similarity<{0.999}")
+    if diff.left_nan_count or diff.left_inf_count:
+        reasons.append(f"reference contains non-finite values: nan={diff.left_nan_count}, inf={diff.left_inf_count}")
+    if diff.right_nan_count or diff.right_inf_count:
+        reasons.append(f"candidate contains non-finite values: nan={diff.right_nan_count}, inf={diff.right_inf_count}")
+    if diff.max_abs_error is not None and diff.max_abs_error > thresholds.max_abs_error:
+        reasons.append(f"max_abs_error>{thresholds.max_abs_error}")
     if (
+        diff.mean_relative_error is not None
+        and diff.mean_relative_error > thresholds.max_mean_relative_error
+    ):
+        reasons.append(f"mean_relative_error>{thresholds.max_mean_relative_error}")
+    if (
+        diff.cosine_similarity is not None
+        and diff.cosine_similarity < thresholds.min_cosine_similarity
+    ):
+        reasons.append(f"cosine_similarity<{thresholds.min_cosine_similarity}")
+    quantization_under_resolution = (
+        diff.under_resolution_count is not None
+        and diff.under_resolution_count >= thresholds.small_value_min_count
+        and diff.under_resolution_fraction is not None
+        and diff.under_resolution_fraction >= thresholds.small_value_min_fraction
+        and diff.under_resolution_zero_fraction is not None
+        and diff.under_resolution_zero_fraction >= thresholds.small_value_zero_fraction
+    )
+    if quantization_under_resolution:
+        reasons.append(
+            "possible quantization under-resolution: "
+            f"candidate step={diff.quantization_step_min}..{diff.quantization_step_max}; "
+            f"{diff.under_resolution_zero_fraction:.1%} of {diff.under_resolution_count} "
+            "sub-half-step reference values became zero"
+        )
+    elif (
         diff.small_value_count is not None
-        and diff.small_value_count >= 4
+        and diff.small_value_count >= thresholds.small_value_min_count
         and diff.small_value_fraction is not None
-        and diff.small_value_fraction >= 0.01
+        and diff.small_value_fraction >= thresholds.small_value_min_fraction
         and diff.small_value_zero_fraction is not None
-        and diff.small_value_zero_fraction >= 0.95
+        and diff.small_value_zero_fraction >= thresholds.small_value_zero_fraction
     ):
         reasons.append(
             "possible quantization under-resolution: "
             f"{diff.small_value_zero_fraction:.1%} of {diff.small_value_count} small reference values became zero"
         )
+    if element_count >= thresholds.clipping_min_count:
+        if (
+            diff.right_saturation_fraction is not None
+            and diff.right_saturation_fraction >= thresholds.clipping_ratio_threshold
+            and diff.right_saturation_fraction
+            - (diff.left_saturation_fraction or 0.0)
+            >= thresholds.clipping_ratio_increase
+        ):
+            reasons.append(
+                "possible integer saturation: "
+                f"candidate endpoint ratio={diff.right_saturation_fraction:.1%}"
+            )
+        if (
+            diff.right_clipping_fraction is not None
+            and diff.right_clipping_fraction >= thresholds.clipping_ratio_threshold
+            and diff.right_clipping_fraction
+            - (diff.left_clipping_fraction or 0.0)
+            >= thresholds.clipping_ratio_increase
+        ):
+            reasons.append(
+                "possible clipping: "
+                f"candidate observed-extreme ratio={diff.right_clipping_fraction:.1%}"
+            )
     if reasons:
         return "drift", reasons
     return "aligned", reasons
@@ -128,14 +472,19 @@ def _resolve_framework_stage(
     image_path: str | Path,
     input_tensor,
     expected_names: list[str],
+    map_by_order: bool,
 ) -> _ResolvedStage:
     if framework_out:
-        outputs, warnings = load_framework_outputs(framework_out, expected_names)
+        outputs, warnings = load_framework_outputs(framework_out, expected_names, map_by_order=map_by_order)
+        metadata = _load_artifact_metadata(framework_out, expected_names, map_by_order)
         return _ResolvedStage(
             stage="framework",
             source_kind="npz",
             source_path=str(framework_out),
             outputs=outputs,
+            quantization=metadata.quantization,
+            artifact_source=metadata.source,
+            provenance=metadata.provenance,
             warnings=warnings,
             available=True,
         )
@@ -148,12 +497,15 @@ def _resolve_framework_stage(
                 input_tensor=input_tensor,
                 expected_names=expected_names,
             )
-            mapped, name_warnings = _coerce_outputs(outputs, expected_names, "framework")
+            mapped, name_warnings = _coerce_outputs(outputs, expected_names, "framework", map_by_order)
             return _ResolvedStage(
                 stage="framework",
                 source_kind=f"runner:{framework_runner}",
                 source_path=None,
                 outputs=mapped,
+                quantization={},
+                artifact_source=None,
+                provenance={},
                 warnings=warnings + name_warnings,
                 available=True,
             )
@@ -163,6 +515,9 @@ def _resolve_framework_stage(
                 source_kind=f"runner:{framework_runner}",
                 source_path=None,
                 outputs={},
+                quantization={},
+                artifact_source=None,
+                provenance={},
                 warnings=[str(exc)],
                 available=False,
             )
@@ -171,6 +526,9 @@ def _resolve_framework_stage(
         source_kind="not-provided",
         source_path=None,
         outputs={},
+        quantization={},
+        artifact_source=None,
+        provenance={},
         warnings=[],
         available=False,
     )
@@ -181,25 +539,33 @@ def _resolve_onnx_stage(
     onnx_out: str | Path | None,
     input_tensor,
     expected_names: list[str],
+    map_by_order: bool,
 ) -> _ResolvedStage:
     if onnx_out:
-        outputs, warnings = load_onnx_outputs(onnx_out, expected_names)
+        outputs, warnings = load_onnx_outputs(onnx_out, expected_names, map_by_order=map_by_order)
+        metadata = _load_artifact_metadata(onnx_out, expected_names, map_by_order)
         return _ResolvedStage(
             stage="onnx",
             source_kind="npz",
             source_path=str(onnx_out),
             outputs=outputs,
+            quantization=metadata.quantization,
+            artifact_source=metadata.source,
+            provenance=metadata.provenance,
             warnings=warnings,
             available=True,
         )
     if onnx_model:
         outputs, warnings = run_onnx_model(onnx_model, input_tensor)
-        mapped, name_warnings = _coerce_outputs(outputs, expected_names, "onnx")
+        mapped, name_warnings = _coerce_outputs(outputs, expected_names, "onnx", map_by_order)
         return _ResolvedStage(
             stage="onnx",
             source_kind="onnxruntime",
             source_path=str(onnx_model),
             outputs=mapped,
+            quantization={},
+            artifact_source=None,
+            provenance={},
             warnings=warnings + name_warnings,
             available=True,
         )
@@ -208,6 +574,9 @@ def _resolve_onnx_stage(
         source_kind="not-provided",
         source_path=None,
         outputs={},
+        quantization={},
+        artifact_source=None,
+        provenance={},
         warnings=[],
         available=False,
     )
@@ -218,14 +587,19 @@ def _resolve_rknn_stage(
     rknn_out: str | Path | None,
     input_tensor,
     expected_names: list[str],
+    map_by_order: bool,
 ) -> _ResolvedStage:
     if rknn_out:
-        outputs, warnings = load_rknn_outputs(rknn_out, expected_names)
+        outputs, warnings = load_rknn_outputs(rknn_out, expected_names, map_by_order=map_by_order)
+        metadata = _load_artifact_metadata(rknn_out, expected_names, map_by_order)
         return _ResolvedStage(
             stage="rknn",
             source_kind="npz",
             source_path=str(rknn_out),
             outputs=outputs,
+            quantization=metadata.quantization,
+            artifact_source=metadata.source,
+            provenance=metadata.provenance,
             warnings=warnings,
             available=True,
         )
@@ -236,12 +610,15 @@ def _resolve_rknn_stage(
                 input_tensor=input_tensor,
                 expected_names=expected_names,
             )
-            mapped, name_warnings = _coerce_outputs(outputs, expected_names, "rknn")
+            mapped, name_warnings = _coerce_outputs(outputs, expected_names, "rknn", map_by_order)
             return _ResolvedStage(
                 stage="rknn",
                 source_kind="rknn-runtime",
                 source_path=str(rknn_model),
                 outputs=mapped,
+                quantization={},
+                artifact_source=None,
+                provenance={},
                 warnings=warnings + name_warnings,
                 available=True,
             )
@@ -251,6 +628,9 @@ def _resolve_rknn_stage(
                 source_kind="rknn-runtime",
                 source_path=str(rknn_model),
                 outputs={},
+                quantization={},
+                artifact_source=None,
+                provenance={},
                 warnings=[str(exc)],
                 available=False,
             )
@@ -259,6 +639,9 @@ def _resolve_rknn_stage(
         source_kind="not-provided",
         source_path=None,
         outputs={},
+        quantization={},
+        artifact_source=None,
+        provenance={},
         warnings=[],
         available=False,
     )
@@ -275,12 +658,25 @@ def compare_stages(
     rknn_model: str | Path | None = None,
     rknn_out: str | Path | None = None,
     report_format: str = "json",
+    map_by_order: bool = False,
+    thresholds: ComparisonThresholds | None = None,
 ) -> StageCompareArtifacts:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
+    thresholds = thresholds or ComparisonThresholds()
+    thresholds.validate()
+
     try:
         contract = load_contract(contract_path)
+        contract_issues = validate_contract(contract)
+        if has_errors(contract_issues):
+            details = "; ".join(
+                f"{issue.code} ({issue.field}): {issue.message}"
+                for issue in contract_issues
+                if issue.severity == "error"
+            )
+            raise StageCompareError(f"contract has validation errors: {details}")
         preprocess = prepare_image(contract, image_path)
     except (OSError, RuntimeError, PreprocessError) as exc:
         raise StageCompareError(str(exc)) from exc
@@ -295,10 +691,12 @@ def compare_stages(
                 image_path,
                 preprocess.input_tensor,
                 expected_names,
+                map_by_order,
             ),
-            _resolve_onnx_stage(onnx_model, onnx_out, preprocess.input_tensor, expected_names),
-            _resolve_rknn_stage(rknn_model, rknn_out, preprocess.input_tensor, expected_names),
+            _resolve_onnx_stage(onnx_model, onnx_out, preprocess.input_tensor, expected_names, map_by_order),
+            _resolve_rknn_stage(rknn_model, rknn_out, preprocess.input_tensor, expected_names, map_by_order),
         ]
+        stages = [_with_contract_warnings(stage, contract.outputs) for stage in stages]
     except (FrameworkAdapterError, OnnxRuntimeAdapterError, RknnAdapterError) as exc:
         raise StageCompareError(str(exc)) from exc
 
@@ -311,8 +709,35 @@ def compare_stages(
     pair_diffs: list[StagePairDiffEntry] = []
     for left, right in zip(available, available[1:], strict=False):
         for output_name in expected_names:
-            diff = compare_arrays(left.outputs[output_name], right.outputs[output_name])
-            status, reasons = _diff_status(diff)
+            (
+                left_values,
+                right_values,
+                comparison_domain,
+                left_saturation_fraction,
+                right_saturation_fraction,
+            ) = _comparison_arrays(left, right, output_name)
+            diff = compare_arrays(
+                left_values,
+                right_values,
+                relative_error_epsilon=thresholds.relative_error_epsilon,
+                small_value_threshold=thresholds.small_value_threshold,
+                small_value_relative_threshold=thresholds.small_value_relative_threshold,
+                small_value_min_threshold=thresholds.small_value_min_threshold,
+                small_value_max_threshold=thresholds.small_value_max_threshold,
+            )
+            diff = _with_quantization_resolution(
+                diff,
+                left_values,
+                right_values,
+                right.quantization.get(output_name),
+            )
+            diff = replace(
+                diff,
+                left_saturation_fraction=left_saturation_fraction,
+                right_saturation_fraction=right_saturation_fraction,
+            )
+            element_count = int(getattr(left.outputs[output_name], "size", 0))
+            status, reasons = _diff_status(diff, thresholds, element_count)
             pair_diffs.append(
                 StagePairDiffEntry(
                     left_stage=left.stage,
@@ -326,22 +751,49 @@ def compare_stages(
                     rms_error=diff.rms_error,
                     cosine_similarity=diff.cosine_similarity,
                     reasons=reasons,
+                    comparison_domain=comparison_domain,  # type: ignore[arg-type]
+                    left_raw_dtype=str(getattr(left.outputs[output_name], "dtype", "unknown")),
+                    right_raw_dtype=str(getattr(right.outputs[output_name], "dtype", "unknown")),
+                    max_relative_error=diff.max_relative_error,
+                    mean_relative_error=diff.mean_relative_error,
+                    left_zero_fraction=diff.left_zero_fraction,
                     right_zero_fraction=diff.right_zero_fraction,
+                    left_nan_count=diff.left_nan_count,
+                    right_nan_count=diff.right_nan_count,
+                    left_inf_count=diff.left_inf_count,
+                    right_inf_count=diff.right_inf_count,
+                    finite_pair_fraction=diff.finite_pair_fraction,
+                    left_saturation_fraction=diff.left_saturation_fraction,
+                    right_saturation_fraction=diff.right_saturation_fraction,
+                    left_clipping_fraction=diff.left_clipping_fraction,
+                    right_clipping_fraction=diff.right_clipping_fraction,
                     small_value_threshold=diff.small_value_threshold,
                     small_value_count=diff.small_value_count,
                     small_value_fraction=diff.small_value_fraction,
                     small_value_zero_fraction=diff.small_value_zero_fraction,
+                    quantization_step_min=diff.quantization_step_min,
+                    quantization_step_max=diff.quantization_step_max,
+                    under_resolution_count=diff.under_resolution_count,
+                    under_resolution_fraction=diff.under_resolution_fraction,
+                    under_resolution_zero_fraction=diff.under_resolution_zero_fraction,
                 )
             )
 
     first_drift = next((item for item in pair_diffs if item.status != "aligned"), None)
-    warnings: list[str] = []
+    warnings = [
+        f"contract warning {issue.code} ({issue.field}): {issue.message}"
+        for issue in contract_issues
+        if issue.severity == "warning"
+    ]
     for stage in stages:
         warnings.extend(stage.warnings)
+    warnings.extend(_provenance_conflict_warnings(available))
 
     final_summary = StageFinalSummary(
         available_stages=[stage.stage for stage in available],
-        compared_pairs=[f"{item.left_stage}->{item.right_stage}" for item in pair_diffs],
+        compared_pairs=list(
+            dict.fromkeys(f"{item.left_stage}->{item.right_stage}" for item in pair_diffs)
+        ),
         drift_detected=first_drift is not None,
         first_drift_stage=first_drift.right_stage if first_drift is not None else None,
         first_drift_pair=f"{first_drift.left_stage}->{first_drift.right_stage}" if first_drift is not None else None,
@@ -356,6 +808,7 @@ def compare_stages(
         pair_diffs=pair_diffs,
         final_summary=final_summary,
         warnings=warnings,
+        comparison_thresholds=asdict(thresholds),
     )
 
     report_json = write_stage_report_json(report, out / "report.json")

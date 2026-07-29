@@ -2,7 +2,7 @@
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
-[![Status](https://img.shields.io/badge/status-foundation-blue)](#current-status)
+[![Status](https://img.shields.io/badge/status-CLI%20MVP-green)](#current-status)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green)](./LICENSE)
 
 TensorFence helps when a model:
@@ -24,6 +24,7 @@ If that sounds like your problem, this project is built for that failure mode.
   - [Beginner Setup](#beginner-setup)
   - [Draft Contract](#draft-contract)
   - [Stage Compare](#stage-compare)
+  - [Tensor Artifacts](#tensor-artifacts)
   - [Qt UI Build](#qt-ui-build)
   - [Agent Guide](#agent-guide)
   - [What a Contract File Looks Like](#what-a-contract-file-looks-like)
@@ -125,7 +126,7 @@ The draft is intentionally conservative:
 
 ## Stage Compare
 
-`compare-stages` is the first end-to-end diagnosis command. In v1 it works best with exported stage outputs:
+`compare-stages` is the artifact-first end-to-end diagnosis command:
 
 ```bash
 tensorfence compare-stages \
@@ -134,7 +135,8 @@ tensorfence compare-stages \
   --framework-out framework.npz \
   --onnx-out onnx.npz \
   --rknn-out rknn.npz \
-  --out out/compare
+  --out out/compare \
+  --report-format html
 ```
 
 It writes:
@@ -142,9 +144,31 @@ It writes:
 - `out/compare/report.json`
 - `out/compare/tensor_diffs.json`
 - `out/compare/final_summary.json`
+- `out/compare/report.html` when HTML is requested
 
-If `onnxruntime` is installed, you can also provide `--onnx model.onnx` or `--onnx-out onnx.npz`.
-Direct framework and RKNN execution are still staged behind adapter hooks, so v1 expects `.npz` artifacts there.
+If `onnxruntime` is installed, pass `--onnx model.onnx` to execute ONNX directly. Direct framework and RKNN execution is not implemented in this MVP; capture those outputs in their native environment and pass canonical `.npz` artifacts.
+
+Output names must match the contract. TensorFence rejects name mismatches by default; `--map-by-order` is an explicit, warning-producing escape hatch for legacy data. Numerical thresholds such as `--max-abs-error`, `--min-cosine-similarity`, and the small-value collapse thresholds are configurable from the CLI.
+
+The report includes absolute and relative errors, cosine similarity, finite/NaN/Inf counts, zero ratios, integer saturation and repeated-extreme clipping ratios. Conservative likely-cause rules currently identify small non-zero values collapsing to zero and likely clipping/saturation. ONNX probing also warns when graph-embedded postprocessing may be duplicated by application code. These are evidence-backed conclusions, not automatic fixes.
+
+## Tensor Artifacts
+
+Tensor artifact v1 stores named arrays and an embedded manifest containing the stage, source, dtype, shape, provenance, and optional quantization scale/zero-point metadata. Existing plain `.npz` files remain readable. Raw integer tensors with metadata are explicitly dequantized for numerical comparison while their raw endpoint statistics remain visible; any raw integer comparison without metadata is rejected.
+
+When framework or board code has already saved output arrays as `.npy`, package them without installing a runtime adapter:
+
+```bash
+tensorfence dump-tensors \
+  --stage rknn \
+  --source "rknn-runtime 2.3.2 / RK3588" \
+  --tensor output0=output0.npy \
+  --quantization-json quantization.json \
+  --provenance-json provenance.json \
+  --out rknn.npz
+```
+
+The Python writer API, manifest schema, quantization metadata, and framework/RKNN capture examples are documented in [docs/tensor-artifact-v1.md](./docs/tensor-artifact-v1.md).
 
 ## Qt UI Build
 
@@ -182,13 +206,15 @@ The current Qt build opens a compact warm-white workspace shell with:
 - contracts, reports, compare, and settings placeholder pages
 - live status and feedback surfaces
 
-Windows helper scripts are available under `tools/`:
+On Windows, use the single Qt entry point:
 
-- `qt-configure-release.bat`
-- `qt-build-release.bat`
-- `qt-deploy-release.bat`
-- `qt-run-release.bat`
-- `qt-release-all.bat`
+```powershell
+.\tools\qt.ps1 build
+.\tools\qt.ps1 smoke
+.\tools\qt.ps1 run
+```
+
+The script resolves Qt from command-line arguments, environment variables, `.env`, then automatic discovery, and pins CMake, MinGW, and `MinGW Makefiles` from that installation. For local configuration, copy `.env.example` to `.env` and set `QT_ROOT` and `QT_VERSION`; `.env` is ignored by Git. Codex environments automatically use the agent-safe CMake branch. The older `.bat` files remain as compatibility wrappers.
 
 See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for Qt UI licensing notes.
 
@@ -278,12 +304,12 @@ Recommended, but not strictly mandatory:
 
 ## What TensorFence Checks
 
-- Input contract: shape, dtype, layout, color space
+- Input contract: shape, dtype, layout, color space, and task-aware requirements
 - Preprocess contract: resize, letterbox, normalize, pad value
-- Output contract: tensor order, tensor semantics, tensor shape
-- Decode contract: YOLO / PP-YOLOE style decode rules
-- NMS contract: thresholds, class handling, method
-- Quantization contract: calibration data and preprocess match
+- Output contract: explicit tensor names, semantics, and shapes
+- Decode/NMS declarations: required fields and obvious internal inconsistencies
+- Quantization declaration: calibration references and preprocess-match intent
+- Stage tensors: finite values, zeros, saturation/clipping, and absolute/relative drift
 
 ## What TensorFence Can Do
 
@@ -299,41 +325,48 @@ See [docs/product-scope.md](./docs/product-scope.md) for the formal scope.
 
 ## Current Status
 
-TensorFence is in the foundation stage.
+TensorFence has reached its first artifact-first CLI MVP.
 
 What exists now:
 
-- A conda-ready project skeleton
-- A contract schema for input and output semantics
-- Validation for obvious mismatch risks
-- Tensor summary and tensor diff helpers
-- A CLI for `doctor`, `check-contract`, `init`, `inspect-image`, `probe-model`, and `draft-contract`
+- strict, task-aware deployment contracts that reject unknown fields
+- ONNX graph probing and direct ONNX Runtime execution
+- single-image preprocessing inspection
+- canonical tensor artifact schema v1 and the `dump-tensors` capture utility
+- framework/ONNX/RKNN artifact comparison with JSON, Markdown, and HTML reports
+- configurable numerical drift metrics and conservative likely-cause detection
+- Python 3.12 CI, real ONNX integration coverage, and installed-wheel HTML smoke coverage
 
 What you can use right now:
 
-- validate a model contract before export work starts
-- catch input, output, preprocess, and decode mismatches early
-- turn a vague deployment failure into a reproducible report
-- build a clean baseline for future adapter work
-- extract ONNX model facts, operator histograms, and graph summaries
-- generate a rule-driven draft contract from ONNX facts
+- validate or draft a contract before export work starts
+- inspect the exact image preprocessing tensor
+- extract ONNX model facts, operator histograms, and embedded-postprocess warnings
+- run ONNX and compare it with captured framework/RKNN tensors
+- detect numerical drift, non-finite output, small-value zero collapse, and clipping/saturation evidence
+- produce reproducible, versioned artifacts without changing the model
 
-Next capability milestones:
+Deliberate MVP boundaries:
 
-- shared report and artifact schema
-- ONNX stage comparison
-- RKNN stage comparison
+- framework and RKNN models are not executed directly; their tensors are captured externally
+- YOLO/PP-YOLOE decode and NMS are declared and inspected, but task-specific postprocessing is not executed
+- preprocessing currently produces float32 image tensors
+- the Qt application is a viewer/workspace preview and is not wired to every CLI workflow
+- TensorFence never rewrites models or applies quantization fixes automatically
 
 ## Supported Scope
 
 | Area | Status |
 | --- | --- |
-| Detection contracts | Foundation only |
-| YOLO-style decode rules | Foundation only |
-| PP-YOLOE contracts | Planned |
-| ONNX runtime comparison | Planned |
-| RKNN runtime comparison | Planned |
-| Quantization drift reports | Planned |
+| Strict contract validation | MVP |
+| ONNX probing and direct runtime comparison | MVP |
+| Framework output comparison | MVP via tensor artifact |
+| RKNN output comparison | MVP via tensor artifact |
+| Tensor artifact manifest and quantization metadata | v1 |
+| Numerical/quantization drift reports | MVP |
+| YOLO/PP-YOLOE decode and NMS execution | Not implemented |
+| Direct framework/RKNN adapters | Not implemented |
+| Qt workbench | Preview shell |
 
 ## Repository Layout
 
@@ -359,7 +392,8 @@ Next capability milestones:
 - `examples/reports/`: sample report outputs
 - `examples/models/`: sample imported model metadata or manifests
 - `tests/unit/`: unit-level checks
-- `tests/integration/`: adapter and pipeline checks
+- `tests/integration/`: real ONNX CLI pipeline checks
+- `.github/workflows/`: Python test and wheel-install CI
 - `tests/fixtures/`: shared test inputs
 - `.github/ISSUE_TEMPLATE/`: issue templates for contributors
 - `THIRD_PARTY_NOTICES.md`: third-party license notes

@@ -117,6 +117,7 @@ class InspectImageTests(unittest.TestCase):
 
         report_data = json.loads((out_dir / "report.json").read_text(encoding="utf-8"))
         self.assertEqual(report_data["contract_name"], "test-inspect")
+        self.assertEqual(report_data["schema_version"], "tensorfence.inspection-report/v1")
         self.assertEqual(report_data["tensor_summary"]["shape"], [1, 3, 4, 4])
 
     def test_cli_inspect_image_writes_json_report_only(self) -> None:
@@ -175,6 +176,29 @@ class InspectImageTests(unittest.TestCase):
 
         contract_path.write_text(CONTRACT_TEXT, encoding="utf-8")
         image_path.write_text("not an image", encoding="utf-8")
+
+        exit_code = main(
+            [
+                "inspect-image",
+                "--contract",
+                str(contract_path),
+                "--image",
+                str(image_path),
+                "--out",
+                str(out_dir),
+            ]
+        )
+
+        self.assertEqual(exit_code, 2)
+
+    def test_cli_inspect_image_rejects_invalid_preprocess_contract(self) -> None:
+        temp_root = self._make_temp_root()
+        contract_path = temp_root / "contract.yaml"
+        image_path = temp_root / "sample.png"
+        out_dir = temp_root / "out"
+        invalid = CONTRACT_TEXT.replace("pad_value: 114", "pad_value: -1")
+        contract_path.write_text(invalid, encoding="utf-8")
+        Image.fromarray(np.full((4, 4, 3), 80, dtype=np.uint8), mode="RGB").save(image_path)
 
         exit_code = main(
             [

@@ -34,11 +34,19 @@
         {% for stage in report.stages %}
         <tr>
           <td><code>{{ stage.stage }}</code></td>
-          <td><code>{{ stage.source_kind }}</code><br/><code>{{ stage.source_path }}</code></td>
+          <td>
+            <code>{{ stage.source_kind }}</code><br/>
+            path=<code>{{ stage.source_path }}</code><br/>
+            artifact_source=<code>{{ stage.artifact_source }}</code><br/>
+            {% if stage.provenance %}provenance=<code>{{ stage.provenance }}</code>{% endif %}
+          </td>
           <td>{{ 'available' if stage.available else 'skipped' }}</td>
           <td>
             {% for output in stage.outputs %}
             <div><code>{{ output.name }}</code> shape=<code>{{ output.shape }}</code> dtype=<code>{{ output.dtype }}</code></div>
+            <div>raw_finite=<code>{{ output.finite_fraction }}</code> raw_zero=<code>{{ output.zero_fraction }}</code> raw_nan=<code>{{ output.nan_count }}</code> raw_+inf=<code>{{ output.positive_inf_count }}</code> raw_-inf=<code>{{ output.negative_inf_count }}</code></div>
+            {% if output.quantization %}<div>quantization=<code>{{ output.quantization }}</code></div>{% endif %}
+            {% if output.quantization %}<div>dequantized_range=<code>[{{ output.dequantized_minimum }}, {{ output.dequantized_maximum }}]</code> dequantized_zero=<code>{{ output.dequantized_zero_fraction }}</code></div>{% endif %}
             {% endfor %}
           </td>
           <td>
@@ -69,14 +77,27 @@
           <td><code>{{ diff.tensor_name }}</code></td>
           <td class="{{ diff.status }}">{{ diff.status }}</td>
           <td>
+            <div>domain=<code>{{ diff.comparison_domain }}</code></div>
+            <div>raw_dtype(left/right)=<code>{{ diff.left_raw_dtype }}/{{ diff.right_raw_dtype }}</code></div>
             <div>max_abs=<code>{{ diff.max_abs_error }}</code></div>
             <div>mean_abs=<code>{{ diff.mean_abs_error }}</code></div>
             <div>rms=<code>{{ diff.rms_error }}</code></div>
             <div>cosine=<code>{{ diff.cosine_similarity }}</code></div>
+            <div>max_relative=<code>{{ diff.max_relative_error }}</code></div>
+            <div>mean_relative=<code>{{ diff.mean_relative_error }}</code></div>
+            <div>finite_pair=<code>{{ diff.finite_pair_fraction }}</code></div>
+            <div>left_zero=<code>{{ diff.left_zero_fraction }}</code></div>
             <div>right_zero=<code>{{ diff.right_zero_fraction }}</code></div>
+            <div>nan(left/right)=<code>{{ diff.left_nan_count }}/{{ diff.right_nan_count }}</code></div>
+            <div>inf(left/right)=<code>{{ diff.left_inf_count }}/{{ diff.right_inf_count }}</code></div>
+            <div>saturation(left/right)=<code>{{ diff.left_saturation_fraction }}/{{ diff.right_saturation_fraction }}</code></div>
+            <div>clipping(left/right)=<code>{{ diff.left_clipping_fraction }}/{{ diff.right_clipping_fraction }}</code></div>
             <div>small_threshold=<code>{{ diff.small_value_threshold }}</code></div>
             <div>small_fraction=<code>{{ diff.small_value_fraction }}</code></div>
             <div>small_zero=<code>{{ diff.small_value_zero_fraction }}</code></div>
+            <div>quantization_step(min/max)=<code>{{ diff.quantization_step_min }}/{{ diff.quantization_step_max }}</code></div>
+            <div>under_resolution_fraction=<code>{{ diff.under_resolution_fraction }}</code></div>
+            <div>under_resolution_zero=<code>{{ diff.under_resolution_zero_fraction }}</code></div>
           </td>
           <td>
             {% for reason in diff.reasons %}

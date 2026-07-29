@@ -11,21 +11,25 @@ class ContractError(RuntimeError):
     pass
 
 
-class ResizeSpec(BaseModel):
+class StrictBaseModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ResizeSpec(StrictBaseModel):
     mode: Literal["stretch", "letterbox", "keep_ratio"] = "letterbox"
     target_size: list[int] = Field(min_length=2, max_length=2)
     interpolation: Literal["nearest", "bilinear", "area", "bicubic"] = "bilinear"
     keep_aspect_ratio: bool = True
 
 
-class NormalizeSpec(BaseModel):
+class NormalizeSpec(StrictBaseModel):
     scale: float | list[float] = 1.0
     mean: list[float] = Field(default_factory=list)
     std: list[float] = Field(default_factory=list)
 
 
-class PreprocessSpec(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+class PreprocessSpec(StrictBaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     input_color_space: Literal["RGB", "BGR", "GRAY"]
     input_layout: Literal["HWC", "CHW", "NCHW", "NHWC", "HW", "N/A"]
@@ -36,7 +40,7 @@ class PreprocessSpec(BaseModel):
     pad_value: int | list[int] = 0
 
 
-class TensorSpec(BaseModel):
+class TensorSpec(StrictBaseModel):
     name: str
     shape: list[int] = Field(min_length=1)
     dtype: str = "float32"
@@ -55,7 +59,7 @@ class TensorSpec(BaseModel):
         return self
 
 
-class DecodeSpec(BaseModel):
+class DecodeSpec(StrictBaseModel):
     family: Literal["yolo", "ppyoloe", "generic"] = "yolo"
     mode: Literal["anchor_free", "anchor_based"] = "anchor_free"
     num_classes: int
@@ -67,7 +71,7 @@ class DecodeSpec(BaseModel):
     box_activation: Literal["sigmoid", "exp", "none"] = "sigmoid"
 
 
-class NmsSpec(BaseModel):
+class NmsSpec(StrictBaseModel):
     score_threshold: float = 0.25
     iou_threshold: float = 0.45
     class_agnostic: bool = False
@@ -75,14 +79,14 @@ class NmsSpec(BaseModel):
     method: Literal["nms", "soft-nms"] = "nms"
 
 
-class QuantizationSpec(BaseModel):
+class QuantizationSpec(StrictBaseModel):
     enabled: bool = False
     calibration_dataset: str | None = None
     calibration_samples: int | None = None
     match_preprocess: bool = True
 
 
-class ModelContract(BaseModel):
+class ModelContract(StrictBaseModel):
     name: str
     task: Literal["detection", "classification", "segmentation", "pose", "ocr", "custom"] = "detection"
     source_framework: str
@@ -118,7 +122,7 @@ def load_contract(path: str | Path) -> ModelContract:
     try:
         return ModelContract.model_validate(raw)
     except ValidationError as exc:
-        raise ContractError(f"contract validation failed: {source}") from exc
+        raise ContractError(f"contract validation failed: {source}\n{exc}") from exc
 
 
 def load_contract_from_text(text: str) -> ModelContract:
@@ -135,7 +139,7 @@ def load_contract_from_text(text: str) -> ModelContract:
     try:
         return ModelContract.model_validate(raw)
     except ValidationError as exc:
-        raise ContractError("contract validation failed") from exc
+        raise ContractError(f"contract validation failed\n{exc}") from exc
 
 
 def dump_contract(contract: ModelContract) -> str:
@@ -151,4 +155,3 @@ def write_contract(path: str | Path, contract: ModelContract) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(dump_contract(contract), encoding="utf-8")
     return target
-

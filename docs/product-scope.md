@@ -105,7 +105,7 @@ Examples:
 
 ### 9. Shared Artifacts
 
-TensorFence should emit shared artifacts for CLI, CI, reports, and Qt UI.
+TensorFence emits shared artifacts for CLI, CI, reports, and Qt UI.
 
 Expected outputs include:
 
@@ -113,6 +113,7 @@ Expected outputs include:
 - YAML draft contracts
 - JSON reports
 - HTML reports
+- canonical tensor `.npz` files with a versioned manifest
 
 ### 10. Qt Viewer Layer
 
@@ -163,11 +164,8 @@ Qt should not duplicate core business logic.
 - `qt/`
   Viewer and editing layer for artifacts.
 
-## Near-Term Priorities
+## Current MVP Boundary
 
-1. Single-image preprocessing inspection
-2. Shared artifact schema
-3. Model probing outputs
-4. Draft contract generation
-5. ONNX stage comparison
-6. RKNN stage comparison
+The artifact-first CLI MVP includes single-image inspection, ONNX probing and direct execution, draft contracts,
+canonical tensor artifact v1, and framework/ONNX/RKNN artifact comparison. Direct framework and RKNN execution,
+task-specific decode/NMS execution, non-float32 preprocessing, and a fully wired Qt workbench remain future work.

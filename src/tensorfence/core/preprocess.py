@@ -103,10 +103,18 @@ def _from_pil(image: Image.Image, color_space: str) -> np.ndarray:
 
 def _normalize_pad_value(pad_value: int | list[int], channels: int, color_space: str) -> np.ndarray:
     if isinstance(pad_value, int):
+        if not 0 <= pad_value <= 255:
+            raise PreprocessError("pad_value components must be between 0 and 255")
         if color_space == "GRAY" or channels == 1:
             return np.asarray(pad_value, dtype=np.uint8)
         return np.full((channels,), pad_value, dtype=np.uint8)
 
+    if not pad_value:
+        raise PreprocessError("pad_value must not be empty")
+    if len(pad_value) not in {1, channels}:
+        raise PreprocessError(f"pad_value length must be 1 or match channel count {channels}")
+    if any(value < 0 or value > 255 for value in pad_value):
+        raise PreprocessError("pad_value components must be between 0 and 255")
     values = np.asarray(pad_value, dtype=np.uint8)
     if values.size == 1:
         if color_space == "GRAY" or channels == 1:
@@ -201,19 +209,30 @@ def _resize_and_pad(
 
 def _normalize_image(image: np.ndarray, scale: float | list[float], mean: list[float], std: list[float]) -> np.ndarray:
     values = image.astype(np.float32)
+    channels = image.shape[2] if image.ndim == 3 else 1
+
+    def _channel_values(raw: float | list[float], field: str) -> np.ndarray:
+        vector = raw if isinstance(raw, list) else [raw]
+        if not vector or len(vector) not in {1, channels}:
+            raise PreprocessError(f"normalize.{field} length must be 1 or match channel count {channels}")
+        if any(not np.isfinite(value) for value in vector):
+            raise PreprocessError(f"normalize.{field} values must be finite")
+        return np.asarray(vector, dtype=np.float32)
 
     if isinstance(scale, list):
-        scale_values = np.asarray(scale, dtype=np.float32)
+        scale_values = _channel_values(scale, "scale")
         values = values * scale_values
     else:
+        if not np.isfinite(scale):
+            raise PreprocessError("normalize.scale must be finite")
         values = values * float(scale)
 
     if mean:
-        mean_values = np.asarray(mean, dtype=np.float32)
+        mean_values = _channel_values(mean, "mean")
         values = values - mean_values
 
     if std:
-        std_values = np.asarray(std, dtype=np.float32)
+        std_values = _channel_values(std, "std")
         if np.any(std_values == 0):
             raise PreprocessError("normalize.std cannot contain zero")
         values = values / std_values

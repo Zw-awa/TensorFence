@@ -4,16 +4,16 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import Field, ValidationError, model_validator
 
-from ..core.contracts import NormalizeSpec
+from ..core.contracts import NormalizeSpec, StrictBaseModel
 
 
 class RuleError(RuntimeError):
     pass
 
 
-class RuleDefaults(BaseModel):
+class RuleDefaults(StrictBaseModel):
     name: str = "{model_name}-draft"
     source_framework: str = "onnx"
     target_runtime: str = "rknn"
@@ -21,7 +21,7 @@ class RuleDefaults(BaseModel):
     family: Literal["yolo", "ppyoloe", "generic"] = "generic"
 
 
-class InputSelectionRule(BaseModel):
+class InputSelectionRule(StrictBaseModel):
     strategy: Literal["first", "by_name"] = "first"
     name: str | None = None
 
@@ -32,7 +32,7 @@ class InputSelectionRule(BaseModel):
         return self
 
 
-class OutputSelectionRule(BaseModel):
+class OutputSelectionRule(StrictBaseModel):
     strategy: Literal["all", "by_name"] = "all"
     names: list[str] = Field(default_factory=list)
 
@@ -43,41 +43,41 @@ class OutputSelectionRule(BaseModel):
         return self
 
 
-class SelectionRules(BaseModel):
+class SelectionRules(StrictBaseModel):
     input: InputSelectionRule = Field(default_factory=InputSelectionRule)
     outputs: OutputSelectionRule = Field(default_factory=OutputSelectionRule)
 
 
-class InputLayoutRules(BaseModel):
+class InputLayoutRules(StrictBaseModel):
     rank4: Literal["NCHW", "NHWC"] = "NCHW"
     rank2: Literal["NC"] | None = None
 
 
-class InputMappingRules(BaseModel):
+class InputMappingRules(StrictBaseModel):
     semantic: str = "model_input"
     layout_from_rank: InputLayoutRules = Field(default_factory=InputLayoutRules)
     dtype_fallback: str = "float32"
 
 
-class OutputMappingRules(BaseModel):
+class OutputMappingRules(StrictBaseModel):
     semantic: str = "raw_predictions"
     layout: Literal["NCHW", "NHWC", "NC", "N/A"] = "N/A"
     dtype_fallback: str = "float32"
 
 
-class MappingRules(BaseModel):
+class MappingRules(StrictBaseModel):
     input: InputMappingRules = Field(default_factory=InputMappingRules)
     outputs: OutputMappingRules = Field(default_factory=OutputMappingRules)
 
 
-class ResizeTemplateSpec(BaseModel):
+class ResizeTemplateSpec(StrictBaseModel):
     mode: Literal["stretch", "letterbox", "keep_ratio"] = "letterbox"
     target_size: list[int] | None = Field(default=None, min_length=2, max_length=2)
     interpolation: Literal["nearest", "bilinear", "area", "bicubic"] = "bilinear"
     keep_aspect_ratio: bool = True
 
 
-class PreprocessTemplateSpec(BaseModel):
+class PreprocessTemplateSpec(StrictBaseModel):
     input_color_space: Literal["RGB", "BGR", "GRAY"] = "BGR"
     output_color_space: Literal["RGB", "BGR", "GRAY"] | None = "RGB"
     input_layout: Literal["HWC", "CHW", "NCHW", "NHWC", "HW", "N/A"] = "HWC"
@@ -87,7 +87,7 @@ class PreprocessTemplateSpec(BaseModel):
     pad_value: int | list[int] = 114
 
 
-class DecodeTemplateSpec(BaseModel):
+class DecodeTemplateSpec(StrictBaseModel):
     enabled: bool = False
     family: Literal["yolo", "ppyoloe", "generic"] = "generic"
     mode: Literal["anchor_free", "anchor_based"] = "anchor_free"
@@ -112,7 +112,7 @@ class DecodeTemplateSpec(BaseModel):
         return self
 
 
-class NmsTemplateSpec(BaseModel):
+class NmsTemplateSpec(StrictBaseModel):
     enabled: bool = False
     score_threshold: float = 0.25
     iou_threshold: float = 0.45
@@ -121,7 +121,7 @@ class NmsTemplateSpec(BaseModel):
     method: Literal["nms", "soft-nms"] = "nms"
 
 
-class QuantizationTemplateSpec(BaseModel):
+class QuantizationTemplateSpec(StrictBaseModel):
     enabled: bool = False
     calibration_dataset: str | None = None
     calibration_samples: int | None = None
@@ -138,14 +138,14 @@ class QuantizationTemplateSpec(BaseModel):
         return self
 
 
-class TemplateRules(BaseModel):
+class TemplateRules(StrictBaseModel):
     preprocess: PreprocessTemplateSpec
     decode: DecodeTemplateSpec = Field(default_factory=DecodeTemplateSpec)
     nms: NmsTemplateSpec = Field(default_factory=NmsTemplateSpec)
     quantization: QuantizationTemplateSpec = Field(default_factory=QuantizationTemplateSpec)
 
 
-class DraftRuleSet(BaseModel):
+class DraftRuleSet(StrictBaseModel):
     version: Literal[1] = 1
     defaults: RuleDefaults = Field(default_factory=RuleDefaults)
     selection: SelectionRules = Field(default_factory=SelectionRules)
@@ -171,4 +171,4 @@ def load_rules(path: str | Path) -> DraftRuleSet:
     try:
         return DraftRuleSet.model_validate(raw)
     except ValidationError as exc:
-        raise RuleError(f"rule validation failed: {source}") from exc
+        raise RuleError(f"rule validation failed: {source}\n{exc}") from exc
