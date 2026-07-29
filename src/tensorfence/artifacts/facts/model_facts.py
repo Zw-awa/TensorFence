@@ -134,6 +134,7 @@ def write_ops_summary_json(model_facts: ModelFacts, path: str | Path) -> Path:
         "output_count": len(model_facts.outputs),
         "initializer_count": len(model_facts.initializers),
         "operator_histogram": model_facts.operator_histogram,
+        "warnings": model_facts.warnings,
     }
     target.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     return target

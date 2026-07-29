@@ -14,6 +14,58 @@ from ..artifacts.facts.model_facts import (
 from .base import ProbeArtifacts, ProbeError
 
 
+_KNOWN_NMS_OPS = {
+    "batchednms",
+    "batchednmsdynamictrt",
+    "efficientnms",
+    "efficientnmstrt",
+    "matrixnms",
+    "multiclassnms",
+    "multiclassnms2",
+    "multiclassnms3",
+    "nms",
+    "nonmaxsuppression",
+}
+
+
+def _normalized_name(value: str) -> str:
+    return "".join(character for character in value.lower() if character.isalnum())
+
+
+def _detect_embedded_postprocess(nodes: list[NodeFact], outputs: list[TensorFact]) -> list[str]:
+    warnings: list[str] = []
+    nms_nodes = [
+        node
+        for node in nodes
+        if _normalized_name(node.op_type) in _KNOWN_NMS_OPS or "nms" in _normalized_name(node.op_type)
+    ]
+    if nms_nodes:
+        evidence = ", ".join(f"{node.name or '<unnamed>'}:{node.op_type}" for node in nms_nodes)
+        warnings.append(
+            "embedded postprocess detected (high confidence): "
+            f"ONNX graph contains NMS operator(s) [{evidence}]. Model outputs may already be filtered; "
+            "applying external NMS again can duplicate postprocessing."
+        )
+
+    normalized_outputs = {_normalized_name(output.name) for output in outputs}
+    final_detection_names = {
+        "detectionboxes",
+        "detectionscores",
+        "detectionclasses",
+    }
+    matched_names = sorted(normalized_outputs & final_detection_names)
+    has_detection_count = bool(normalized_outputs & {"numdetections", "numdets", "validdetections"})
+    if not nms_nodes and (has_detection_count or len(matched_names) >= 2):
+        evidence = sorted(output.name for output in outputs)
+        warnings.append(
+            "embedded postprocess possible (medium confidence): "
+            f"graph outputs look like final detection results {evidence}. Verify whether decode/NMS already runs "
+            "inside the model before applying external postprocessing."
+        )
+
+    return warnings
+
+
 def _import_onnx():
     try:
         import onnx
@@ -96,6 +148,7 @@ def collect_onnx_model_facts(model_path: str | Path) -> ModelFacts:
         for node in graph.node
     ]
     histogram = dict(sorted(Counter(node.op_type for node in nodes).items()))
+    warnings = _detect_embedded_postprocess(nodes, outputs)
 
     return ModelFacts(
         format="onnx",
@@ -116,7 +169,7 @@ def collect_onnx_model_facts(model_path: str | Path) -> ModelFacts:
         initializers=initializers,
         nodes=nodes,
         operator_histogram=histogram,
-        warnings=[],
+        warnings=warnings,
     )
 
 
@@ -134,4 +187,5 @@ def probe_onnx_model(model_path: str | Path, out_dir: str | Path, output_format:
         model_facts_json=facts_json,
         ops_summary_json=ops_json,
         graph_summary_md=graph_md,
+        warnings=list(facts.warnings),
     )

@@ -23,6 +23,11 @@ class TensorDiff:
     mean_abs_error: float | None
     rms_error: float | None
     cosine_similarity: float | None
+    right_zero_fraction: float | None = None
+    small_value_threshold: float | None = None
+    small_value_count: int | None = None
+    small_value_fraction: float | None = None
+    small_value_zero_fraction: float | None = None
 
 
 def summarize_array(array: np.ndarray) -> TensorSummary:
@@ -63,5 +68,36 @@ def compare_arrays(left: np.ndarray, right: np.ndarray) -> TensorDiff:
     if denominator > 0:
         cosine_similarity = float(np.dot(left_flat, right_flat) / denominator)
 
-    return TensorDiff(shape_match, dtype_match, max_abs_error, mean_abs_error, rms_error, cosine_similarity)
+    right_flat = right_values.ravel()
+    right_zero_fraction = float(np.mean(right_flat == 0)) if right_flat.size else None
+    left_abs = np.abs(left_flat)
+    left_max_abs = float(np.max(left_abs)) if left_abs.size else 0.0
+    small_value_threshold = max(1e-6, min(1e-3, left_max_abs * 1e-4)) if left_abs.size else None
+    small_value_mask = (
+        (left_abs > 0) & (left_abs <= small_value_threshold)
+        if small_value_threshold is not None
+        else None
+    )
+    small_value_count = int(np.count_nonzero(small_value_mask)) if small_value_mask is not None else None
+    small_value_fraction = (
+        float(small_value_count / left_abs.size)
+        if small_value_count is not None and left_abs.size
+        else None
+    )
+    small_value_zero_fraction = None
+    if small_value_mask is not None and small_value_count:
+        small_value_zero_fraction = float(np.mean(right_flat[small_value_mask] == 0))
 
+    return TensorDiff(
+        shape_match,
+        dtype_match,
+        max_abs_error,
+        mean_abs_error,
+        rms_error,
+        cosine_similarity,
+        right_zero_fraction,
+        small_value_threshold,
+        small_value_count,
+        small_value_fraction,
+        small_value_zero_fraction,
+    )

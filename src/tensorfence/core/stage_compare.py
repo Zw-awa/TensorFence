@@ -20,7 +20,7 @@ from ..artifacts.reports.stage_report import (
     write_tensor_diffs_json,
 )
 from .contracts import load_contract
-from .diff import compare_arrays, summarize_array
+from .diff import TensorDiff, compare_arrays, summarize_array
 from .preprocess import PreprocessError, prepare_image
 
 
@@ -93,17 +93,29 @@ def _make_stage_record(stage: _ResolvedStage) -> StageRecord:
     )
 
 
-def _diff_status(shape_match: bool, dtype_match: bool, max_abs: float | None, cosine: float | None) -> tuple[str, list[str]]:
+def _diff_status(diff: TensorDiff) -> tuple[str, list[str]]:
     reasons: list[str] = []
-    if not shape_match:
+    if not diff.shape_match:
         reasons.append("shape mismatch")
         return "shape_mismatch", reasons
-    if not dtype_match:
+    if not diff.dtype_match:
         reasons.append("dtype mismatch")
-    if max_abs is not None and max_abs > 1e-3:
+    if diff.max_abs_error is not None and diff.max_abs_error > 1e-3:
         reasons.append(f"max_abs_error>{1e-3}")
-    if cosine is not None and cosine < 0.999:
+    if diff.cosine_similarity is not None and diff.cosine_similarity < 0.999:
         reasons.append(f"cosine_similarity<{0.999}")
+    if (
+        diff.small_value_count is not None
+        and diff.small_value_count >= 4
+        and diff.small_value_fraction is not None
+        and diff.small_value_fraction >= 0.01
+        and diff.small_value_zero_fraction is not None
+        and diff.small_value_zero_fraction >= 0.95
+    ):
+        reasons.append(
+            "possible quantization under-resolution: "
+            f"{diff.small_value_zero_fraction:.1%} of {diff.small_value_count} small reference values became zero"
+        )
     if reasons:
         return "drift", reasons
     return "aligned", reasons
@@ -300,12 +312,7 @@ def compare_stages(
     for left, right in zip(available, available[1:], strict=False):
         for output_name in expected_names:
             diff = compare_arrays(left.outputs[output_name], right.outputs[output_name])
-            status, reasons = _diff_status(
-                diff.shape_match,
-                diff.dtype_match,
-                diff.max_abs_error,
-                diff.cosine_similarity,
-            )
+            status, reasons = _diff_status(diff)
             pair_diffs.append(
                 StagePairDiffEntry(
                     left_stage=left.stage,
@@ -319,6 +326,11 @@ def compare_stages(
                     rms_error=diff.rms_error,
                     cosine_similarity=diff.cosine_similarity,
                     reasons=reasons,
+                    right_zero_fraction=diff.right_zero_fraction,
+                    small_value_threshold=diff.small_value_threshold,
+                    small_value_count=diff.small_value_count,
+                    small_value_fraction=diff.small_value_fraction,
+                    small_value_zero_fraction=diff.small_value_zero_fraction,
                 )
             )
 

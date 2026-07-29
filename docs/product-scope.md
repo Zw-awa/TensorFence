@@ -64,6 +64,11 @@ TensorFence produces machine-readable and human-readable reports that can point 
 - quantization drift
 - runtime-specific divergence
 
+Likely-cause recognition should stay conservative and evidence-backed. For example, TensorFence may flag
+small non-zero reference values that collapse to zero in a later stage as possible quantization
+under-resolution, or an exported ONNX graph containing NMS as a duplicate-postprocessing risk, while still
+reporting the evidence behind each conclusion.
+
 ### 6. Model Probing
 
 TensorFence can inspect imported model files and extract factual graph information:
@@ -138,6 +143,8 @@ Qt should not duplicate core business logic.
 - replace explicit contracts with opaque guessing
 - become a generic exporter collection
 - move core logic into the UI layer
+- automatically rewrite models or apply quantization fixes; TensorFence should expose measurements and a
+  small set of high-confidence likely causes, leaving engineering decisions to the user
 
 ## Recommended Architecture
 
@@ -164,4 +171,3 @@ Qt should not duplicate core business logic.
 4. Draft contract generation
 5. ONNX stage comparison
 6. RKNN stage comparison
-

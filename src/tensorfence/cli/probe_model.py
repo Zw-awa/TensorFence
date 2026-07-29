@@ -47,4 +47,6 @@ def cmd_probe_model(args: argparse.Namespace) -> int:
     print(f"wrote ops summary to {artifacts.ops_summary_json}")
     if artifacts.graph_summary_md is not None:
         print(f"wrote graph summary to {artifacts.graph_summary_md}")
+    for warning in artifacts.warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
     return 0

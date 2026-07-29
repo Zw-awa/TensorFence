@@ -281,6 +281,8 @@ class CompareStagesTests(unittest.TestCase):
         self.assertIn("Stage Compare Report", html)
         self.assertIn("framework", html)
         self.assertIn("onnx", html)
+        self.assertIn("right_zero", html)
+        self.assertIn("small_zero", html)
 
     def test_compare_stages_reports_shape_mismatch(self) -> None:
         temp_root = self._make_temp_root()
@@ -315,6 +317,81 @@ class CompareStagesTests(unittest.TestCase):
         diffs = json.loads((out_dir / "tensor_diffs.json").read_text(encoding="utf-8"))
         self.assertEqual(diffs[0]["status"], "shape_mismatch")
         self.assertIn("shape mismatch", diffs[0]["reasons"])
+
+    def test_compare_stages_flags_small_values_collapsing_to_zero(self) -> None:
+        temp_root = self._make_temp_root()
+        contract_path = temp_root / "contract.yaml"
+        image_path = temp_root / "sample.png"
+        framework_path = temp_root / "framework.npz"
+        rknn_path = temp_root / "rknn.npz"
+        out_dir = temp_root / "out"
+
+        contract_path.write_text(CONTRACT_TEXT, encoding="utf-8")
+        self._write_sample_image(image_path)
+        reference = np.full((1, 1, 6), 1e-7, dtype=np.float32)
+        quantized = np.zeros_like(reference)
+        self._write_stage_npz(framework_path, reference)
+        self._write_stage_npz(rknn_path, quantized)
+
+        exit_code = main(
+            [
+                "compare-stages",
+                "--contract",
+                str(contract_path),
+                "--image",
+                str(image_path),
+                "--framework-out",
+                str(framework_path),
+                "--rknn-out",
+                str(rknn_path),
+                "--out",
+                str(out_dir),
+            ]
+        )
+
+        self.assertEqual(exit_code, 0)
+        diffs = json.loads((out_dir / "tensor_diffs.json").read_text(encoding="utf-8"))
+        self.assertEqual(diffs[0]["status"], "drift")
+        self.assertEqual(diffs[0]["small_value_count"], 6)
+        self.assertEqual(diffs[0]["small_value_fraction"], 1.0)
+        self.assertEqual(diffs[0]["small_value_zero_fraction"], 1.0)
+        self.assertTrue(any("quantization under-resolution" in reason for reason in diffs[0]["reasons"]))
+
+    def test_compare_stages_does_not_flag_small_values_that_are_preserved(self) -> None:
+        temp_root = self._make_temp_root()
+        contract_path = temp_root / "contract.yaml"
+        image_path = temp_root / "sample.png"
+        framework_path = temp_root / "framework.npz"
+        rknn_path = temp_root / "rknn.npz"
+        out_dir = temp_root / "out"
+
+        contract_path.write_text(CONTRACT_TEXT, encoding="utf-8")
+        self._write_sample_image(image_path)
+        reference = np.full((1, 1, 6), 1e-7, dtype=np.float32)
+        self._write_stage_npz(framework_path, reference)
+        self._write_stage_npz(rknn_path, reference.copy())
+
+        exit_code = main(
+            [
+                "compare-stages",
+                "--contract",
+                str(contract_path),
+                "--image",
+                str(image_path),
+                "--framework-out",
+                str(framework_path),
+                "--rknn-out",
+                str(rknn_path),
+                "--out",
+                str(out_dir),
+            ]
+        )
+
+        self.assertEqual(exit_code, 0)
+        diffs = json.loads((out_dir / "tensor_diffs.json").read_text(encoding="utf-8"))
+        self.assertEqual(diffs[0]["status"], "aligned")
+        self.assertEqual(diffs[0]["small_value_zero_fraction"], 0.0)
+        self.assertFalse(any("under-resolution" in reason for reason in diffs[0]["reasons"]))
 
     def test_compare_stages_onnx_model_requires_onnxruntime(self) -> None:
         temp_root = self._make_temp_root()

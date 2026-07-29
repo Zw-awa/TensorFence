@@ -73,6 +73,10 @@
             <div>mean_abs=<code>{{ diff.mean_abs_error }}</code></div>
             <div>rms=<code>{{ diff.rms_error }}</code></div>
             <div>cosine=<code>{{ diff.cosine_similarity }}</code></div>
+            <div>right_zero=<code>{{ diff.right_zero_fraction }}</code></div>
+            <div>small_threshold=<code>{{ diff.small_value_threshold }}</code></div>
+            <div>small_fraction=<code>{{ diff.small_value_fraction }}</code></div>
+            <div>small_zero=<code>{{ diff.small_value_zero_fraction }}</code></div>
           </td>
           <td>
             {% for reason in diff.reasons %}

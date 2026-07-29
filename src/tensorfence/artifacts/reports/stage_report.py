@@ -40,6 +40,11 @@ class StagePairDiffEntry:
     rms_error: float | None
     cosine_similarity: float | None
     reasons: list[str]
+    right_zero_fraction: float | None = None
+    small_value_threshold: float | None = None
+    small_value_count: int | None = None
+    small_value_fraction: float | None = None
+    small_value_zero_fraction: float | None = None
 
 
 @dataclass(frozen=True)
@@ -102,7 +107,9 @@ def write_stage_report_markdown(report: StageCompareReport, path: str | Path) ->
     for diff in report.pair_diffs:
         lines.append(
             f"- `{diff.left_stage}->{diff.right_stage}` `{diff.tensor_name}` [{diff.status}] "
-            f"max_abs=`{diff.max_abs_error}` mean_abs=`{diff.mean_abs_error}` rms=`{diff.rms_error}` cosine=`{diff.cosine_similarity}`"
+            f"max_abs=`{diff.max_abs_error}` mean_abs=`{diff.mean_abs_error}` rms=`{diff.rms_error}` "
+            f"cosine=`{diff.cosine_similarity}` right_zero=`{diff.right_zero_fraction}` "
+            f"small_zero=`{diff.small_value_zero_fraction}`"
         )
         for reason in diff.reasons:
             lines.append(f"  - {reason}")

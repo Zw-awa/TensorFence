@@ -13,3 +13,4 @@ class ProbeArtifacts:
     model_facts_json: Path
     ops_summary_json: Path
     graph_summary_md: Path | None
+    warnings: list[str]

@@ -41,6 +41,20 @@ class ProbeModelTests(unittest.TestCase):
         model = helper.make_model(graph, producer_name="tensorfence-test")
         onnx.save_model(model, str(path))
 
+    def _write_nms_onnx(self, path: Path) -> None:
+        boxes = helper.make_tensor_value_info("boxes", TensorProto.FLOAT, [1, 10, 4])
+        scores = helper.make_tensor_value_info("scores", TensorProto.FLOAT, [1, 1, 10])
+        selected = helper.make_tensor_value_info("selected_indices", TensorProto.INT64, [None, 3])
+        nms_node = helper.make_node(
+            "NonMaxSuppression",
+            ["boxes", "scores"],
+            ["selected_indices"],
+            name="nms0",
+        )
+        graph = helper.make_graph([nms_node], "nms-graph", [boxes, scores], [selected])
+        model = helper.make_model(graph, producer_name="tensorfence-test")
+        onnx.save_model(model, str(path))
+
     def test_probe_model_writes_artifacts(self) -> None:
         temp_root = self._make_temp_root()
         model_path = temp_root / "sample.onnx"
@@ -69,6 +83,34 @@ class ProbeModelTests(unittest.TestCase):
         self.assertEqual(facts["inputs"][0]["name"], "input")
         self.assertEqual(facts["outputs"][0]["name"], "output")
         self.assertEqual(facts["operator_histogram"]["Relu"], 1)
+        self.assertEqual(facts["warnings"], [])
+
+    def test_probe_model_flags_embedded_nms_as_duplicate_postprocess_risk(self) -> None:
+        temp_root = self._make_temp_root()
+        model_path = temp_root / "nms.onnx"
+        out_dir = temp_root / "out"
+        self._write_nms_onnx(model_path)
+
+        exit_code = main(
+            [
+                "probe-model",
+                "--model",
+                str(model_path),
+                "--out",
+                str(out_dir),
+                "--format",
+                "both",
+            ]
+        )
+
+        self.assertEqual(exit_code, 0)
+        facts = json.loads((out_dir / "model_facts.json").read_text(encoding="utf-8"))
+        summary = json.loads((out_dir / "ops_summary.json").read_text(encoding="utf-8"))
+        markdown = (out_dir / "graph_summary.md").read_text(encoding="utf-8")
+        self.assertEqual(facts["operator_histogram"]["NonMaxSuppression"], 1)
+        self.assertTrue(any("duplicate postprocessing" in warning for warning in facts["warnings"]))
+        self.assertEqual(summary["warnings"], facts["warnings"])
+        self.assertIn("embedded postprocess detected", markdown)
 
     def test_probe_model_rejects_unsupported_model_type(self) -> None:
         temp_root = self._make_temp_root()
