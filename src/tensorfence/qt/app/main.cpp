@@ -8,6 +8,7 @@
 #include <QUrl>
 #include <QStandardPaths>
 #include <QTextStream>
+#include <QTimer>
 
 #include "appcontroller.h"
 
@@ -62,6 +63,10 @@ int main(int argc, char *argv[]) {
     if (engine.rootObjects().isEmpty()) {
         appendStartupLog(QStringLiteral("No root objects were created for qrc:/TensorFence/UI/Main.qml."));
         return -1;
+    }
+
+    if (app.arguments().contains(QStringLiteral("--smoke-test"))) {
+        QTimer::singleShot(1500, &app, &QCoreApplication::quit);
     }
 
     return app.exec();

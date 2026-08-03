@@ -94,6 +94,18 @@ If the user chooses D or does not know:
 - If a user only gives a repo link, start with README, AGENT, and the sample contract.
 - If a task is blocked by missing facts, ask the smallest possible question set and stop there.
 
+## Qt Builds
+
+Use the unified entry point instead of invoking CMake, Ninja, AutoMoc, or the foreground runner directly:
+
+```powershell
+.\tools\qt.ps1 build
+.\tools\qt.ps1 smoke
+.\tools\qt.ps1 run
+```
+
+Codex environments automatically use the agent-safe Qt path. Do not call `qt-run-foreground-release.bat` from automation. Cleanup scripts must not recurse into `opensource`.
+
 ## Useful Commands
 
 ```bash

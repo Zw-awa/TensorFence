@@ -37,8 +37,8 @@ rm -rf "${REPO_ROOT}/.tmp" || true
 rm -rf "${REPO_ROOT}/.pytest_cache" || true
 
 find "${REPO_ROOT}" -maxdepth 1 -type d \( -name '.tmp-*' -o -name 'pytest_cache*' \) -print -exec chmod -R u+rwx {} + -exec rm -rf {} + || true
-find "${REPO_ROOT}" -type d -name 'pytest-cache-files-*' -print -exec chmod -R u+rwx {} + -exec rm -rf {} + || true
-find "${REPO_ROOT}" -type d -name '__pycache__' -print -exec chmod -R u+rwx {} + -exec rm -rf {} + || true
+find "${REPO_ROOT}" \( -path "${REPO_ROOT}/opensource" -o -path "${REPO_ROOT}/.git" -o -path "${REPO_ROOT}/build" \) -prune -o -type d -name 'pytest-cache-files-*' -print -exec chmod -R u+rwx {} + -exec rm -rf {} + || true
+find "${REPO_ROOT}" \( -path "${REPO_ROOT}/opensource" -o -path "${REPO_ROOT}/.git" -o -path "${REPO_ROOT}/build" \) -prune -o -type d -name '__pycache__' -print -exec chmod -R u+rwx {} + -exec rm -rf {} + || true
 
 if [[ "${INCLUDE_BUILD_ARTIFACTS}" -eq 1 ]]; then
   chmod -R u+rwx "${REPO_ROOT}/build" 2>/dev/null || true
@@ -48,7 +48,7 @@ if [[ "${INCLUDE_BUILD_ARTIFACTS}" -eq 1 ]]; then
   rm -rf "${REPO_ROOT}/dist" || true
   rm -rf "${REPO_ROOT}/htmlcov" || true
   rm -f "${REPO_ROOT}/.coverage" || true
-  find "${REPO_ROOT}" -type d -name '*.egg-info' -print -exec chmod -R u+rwx {} + -exec rm -rf {} + || true
+  find "${REPO_ROOT}" \( -path "${REPO_ROOT}/opensource" -o -path "${REPO_ROOT}/.git" -o -path "${REPO_ROOT}/build" \) -prune -o -type d -name '*.egg-info' -print -exec chmod -R u+rwx {} + -exec rm -rf {} + || true
 fi
 
 echo "Cleanup finished."
