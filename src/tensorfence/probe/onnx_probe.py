@@ -11,6 +11,7 @@ from ..artifacts.facts.model_facts import (
     write_model_facts_json,
     write_ops_summary_json,
 )
+from ..core.contracts import ModelContract
 from .base import ProbeArtifacts, ProbeError
 
 
@@ -63,6 +64,87 @@ def _detect_embedded_postprocess(nodes: list[NodeFact], outputs: list[TensorFact
             "inside the model before applying external postprocessing."
         )
 
+    return warnings
+
+
+def _is_static_integer(value: int | str | None) -> bool:
+    return isinstance(value, int) and value > 0
+
+
+def _detect_output_contract(nodes: list[NodeFact], outputs: list[TensorFact]) -> dict[str, object]:
+    """Classify only output structures with direct graph evidence; otherwise remain unknown."""
+    nms_nodes = [
+        node
+        for node in nodes
+        if _normalized_name(node.op_type) in _KNOWN_NMS_OPS or "nms" in _normalized_name(node.op_type)
+    ]
+    evidence = [f"output {item.name}: shape={item.shape}" for item in outputs]
+    if nms_nodes:
+        evidence.append("graph contains " + ", ".join(node.op_type for node in nms_nodes))
+        return {"kind": "end_to_end_nms", "confidence": "high", "evidence": evidence}
+
+    shapes = [output.shape for output in outputs]
+    if len(outputs) == 2 and all(shape is not None and len(shape) == 3 for shape in shapes):
+        left, right = shapes  # type: ignore[misc]
+        if left[2] == 4 and right[2] == left[1] and _is_static_integer(right[1]):
+            return {"kind": "ppyoloe_boxes_scores", "confidence": "high", "evidence": evidence}
+
+    if len(outputs) == 1 and shapes[0] is not None and len(shapes[0]) == 3:
+        shape = shapes[0]
+        assert shape is not None
+        channels = [item for item in shape[1:] if _is_static_integer(item)]
+        if any(item >= 5 for item in channels):
+            return {
+                "kind": "yolo_raw_predictions",
+                "confidence": "medium",
+                "evidence": evidence + ["single rank-3 prediction tensor; decode/NMS is not proven to be in graph"],
+            }
+
+    rank4_outputs = [shape for shape in shapes if shape is not None and len(shape) == 4]
+    if len(outputs) >= 6 and len(rank4_outputs) == len(outputs) and len(outputs) % 3 == 0:
+        return {
+            "kind": "rockchip_yolo_multiscale_heads",
+            "confidence": "medium",
+            "evidence": evidence + ["multiple rank-4 outputs in groups of three; verify decoder against exporter version"],
+        }
+
+    names = {_normalized_name(output.name) for output in outputs}
+    if names & {"numdetections", "numdets", "validdetections"}:
+        return {"kind": "end_to_end_detections", "confidence": "medium", "evidence": evidence}
+    return {
+        "kind": "unknown",
+        "confidence": "low",
+        "evidence": evidence + ["output structure is not a recognized TensorFence contract; do not infer a decoder"],
+    }
+
+
+def contract_postprocess_warnings(
+    contract: ModelContract,
+    output_contract: dict[str, object],
+) -> list[str]:
+    """Report only explicit model/contract conflicts; this does not run a decoder."""
+    kind = output_contract.get("kind")
+    warnings: list[str] = []
+    if kind == "end_to_end_nms" and contract.nms is not None:
+        warnings.append(
+            "duplicate postprocessing detected (high confidence): ONNX graph contains NMS while the contract "
+            "also declares external NMS. Disable neither automatically; verify the deployed pipeline ownership."
+        )
+    if kind == "end_to_end_nms" and contract.decode is not None:
+        warnings.append(
+            "duplicate decode risk (high confidence): end-to-end/NMS graph output is paired with an external "
+            "decode contract. Verify whether the application still decodes final detections."
+        )
+    if kind == "ppyoloe_boxes_scores" and contract.decode is not None and contract.decode.family != "ppyoloe":
+        warnings.append(
+            "output contract mismatch (high confidence): model exposes PP-YOLOE boxes+scores, but contract "
+            f"declares {contract.decode.family} decode. These decoders are not interchangeable."
+        )
+    if kind == "rockchip_yolo_multiscale_heads" and contract.decode is None:
+        warnings.append(
+            "decoder evidence required (medium confidence): model looks like multi-scale Rockchip YOLO heads, "
+            "but the contract has no decode specification."
+        )
     return warnings
 
 
@@ -149,6 +231,7 @@ def collect_onnx_model_facts(model_path: str | Path) -> ModelFacts:
     ]
     histogram = dict(sorted(Counter(node.op_type for node in nodes).items()))
     warnings = _detect_embedded_postprocess(nodes, outputs)
+    output_contract = _detect_output_contract(nodes, outputs)
 
     return ModelFacts(
         format="onnx",
@@ -170,11 +253,19 @@ def collect_onnx_model_facts(model_path: str | Path) -> ModelFacts:
         nodes=nodes,
         operator_histogram=histogram,
         warnings=warnings,
+        output_contract=output_contract,
     )
 
 
-def probe_onnx_model(model_path: str | Path, out_dir: str | Path, output_format: str = "both") -> ProbeArtifacts:
+def probe_onnx_model(
+    model_path: str | Path,
+    out_dir: str | Path,
+    output_format: str = "both",
+    contract: ModelContract | None = None,
+) -> ProbeArtifacts:
     facts = collect_onnx_model_facts(model_path)
+    if contract is not None:
+        facts.warnings.extend(contract_postprocess_warnings(contract, facts.output_contract))
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     facts_json = write_model_facts_json(facts, out / "model_facts.json")

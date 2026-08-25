@@ -170,10 +170,21 @@ tensorfence dump-tensors \
 
 The Python writer API, manifest schema, quantization metadata, and framework/RKNN capture examples are documented in [docs/tensor-artifact-v1.md](./docs/tensor-artifact-v1.md).
 
+For a real FP16/INT8 failure, validate that the evidence represents the same input and preprocessing before comparing stages:
+
+```powershell
+tensorfence validate-capture `
+  --contract contract.yaml `
+  --artifact rknn-fp16=fp16.npz `
+  --artifact rknn-int8=int8.npz
+```
+
+This requires canonical artifacts, matching `input_sha256` and `preprocess_id`, and exact `scale` and `zero_point` for every raw INT8 output. The full capture protocol and redacted-case template are in [examples/diagnostic-cases/README.zh-CN.md](./examples/diagnostic-cases/README.zh-CN.md).
+
 ## Qt UI Build
 
 The Qt UI is configured with CMake from the project root and the `src/tensorfence/qt/` subtree.
-It is intended as a viewer and lightweight editor for contracts, reports, and stage-diff artifacts, not as a second execution engine.
+It is intended to organize contracts, reports, and stage-diff artifacts. Python CLI remains the only diagnostic engine; the UI does not reimplement its rules.
 
 Requirements:
 
@@ -199,12 +210,14 @@ Minimal run instructions:
 - single-config generators: `build/qt/bin/tensorfence_qt`
 - multi-config generators on Windows: `build/qt/bin/Release/tensorfence_qt.exe`
 
-The current Qt build opens a compact warm-white workspace shell with:
+The current Qt workspace provides:
 
 - a left navigation rail
 - a drag-and-drop home workspace
-- contracts, reports, compare, and settings placeholder pages
-- live status and feedback surfaces
+- `check-contract` from the Contracts page
+- FP16/INT8 evidence validation and contract-aware ONNX probing from Compare
+- system viewing for Markdown, HTML, and JSON reports
+- an explicit Windows `tensorfence.exe` or `python.exe` selection in Settings, with live command output and exit status
 
 On Windows, use the single Qt entry point:
 
@@ -217,6 +230,8 @@ On Windows, use the single Qt entry point:
 The script resolves Qt from command-line arguments, environment variables, `.env`, then automatic discovery, and pins CMake, MinGW, and `MinGW Makefiles` from that installation. For local configuration, copy `.env.example` to `.env` and set `QT_ROOT` and `QT_VERSION`; `.env` is ignored by Git. Codex environments automatically use the agent-safe CMake branch. The older `.bat` files remain as compatibility wrappers.
 
 See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for Qt UI licensing notes.
+
+Qt invokes only an explicitly selected local Windows CLI. It never enters WSL or guesses a Conda environment. Use WSL/RKNN Toolkit2 and board code for export and capture, then import canonical artifacts into Qt or the CLI for the evidence comparison.
 
 ## Agent Guide
 

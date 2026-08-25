@@ -18,3 +18,5 @@ htmlcov/
 pytest_cache*
 pytest-cache-files-*/
 tools/local/
+examples/diagnostic-cases/**/capture/
+examples/diagnostic-cases/**/evidence/

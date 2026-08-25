@@ -1,0 +1,50 @@
+name: case-template-yolo
+task: detection
+source_framework: pytorch
+target_runtime: rknn
+input:
+  name: images
+  shape: [1, 3, 640, 640]
+  dtype: float32
+  layout: NCHW
+  semantic: model_input
+outputs:
+  - name: output0
+    shape: [1, 5, 8400]
+    dtype: float32
+    layout: N/A
+    semantic: raw_predictions
+preprocess:
+  input_color_space: BGR
+  output_color_space: RGB
+  input_layout: HWC
+  output_layout: NCHW
+  resize:
+    mode: letterbox
+    target_size: [640, 640]
+    interpolation: bilinear
+    keep_aspect_ratio: true
+  normalize:
+    scale: 0.00392156862745098
+    mean: [0.0, 0.0, 0.0]
+    std: [1.0, 1.0, 1.0]
+  pad_value: 114
+decode:
+  family: yolo
+  mode: anchor_free
+  num_classes: 1
+  strides: [8, 16, 32]
+  head_names: [output0]
+  score_activation: sigmoid
+  box_activation: none
+nms:
+  score_threshold: 0.25
+  iou_threshold: 0.45
+  class_agnostic: false
+quantization:
+  enabled: true
+  calibration_dataset: private://case-specific-calibration-set
+  calibration_samples: 500
+  match_preprocess: true
+notes:
+  - Template only. Replace output contract with the probed model facts.

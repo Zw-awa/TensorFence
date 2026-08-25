@@ -14,7 +14,7 @@ Rectangle {
     border.width: 1
     border.color: tone === "warning" ? theme.noColor : theme.coverColor2
     width: Math.min(360, parent ? parent.width - size_.spacing * 4 : 360)
-    height: size_.line * 2.6
+    height: Math.max(size_.line * 2.6, messageText.implicitHeight + size_.spacing * 2)
     z: 99
 
     Behavior on opacity {
@@ -32,7 +32,7 @@ Rectangle {
 
     Timer {
         id: hideTimer
-        interval: 1800
+        interval: 3200
         onTriggered: root.opacity = 0
     }
 
@@ -49,9 +49,11 @@ Rectangle {
         }
 
         Text_ {
+            id: messageText
             text: root.message
             Layout.fillWidth: true
-            elide: Text.ElideRight
+            wrapMode: Text.Wrap
+            maximumLineCount: 2
         }
     }
 }

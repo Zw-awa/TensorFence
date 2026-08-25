@@ -5,6 +5,7 @@ import sys
 
 from ..probe.base import ProbeError
 from ..probe.onnx_probe import probe_onnx_model
+from ..core.contracts import ContractError, load_contract
 
 
 def build_parser(subparsers) -> None:
@@ -20,6 +21,10 @@ def build_parser(subparsers) -> None:
         help="force the model type instead of auto-detecting",
     )
     parser.add_argument("--out", required=True, help="output directory for probe artifacts")
+    parser.add_argument(
+        "--contract",
+        help="optional contract YAML; reports explicit output-contract/decode/NMS conflicts",
+    )
     parser.add_argument(
         "--format",
         choices=["json", "md", "both"],
@@ -38,8 +43,14 @@ def cmd_probe_model(args: argparse.Namespace) -> int:
         if model_type != "onnx":
             raise ProbeError(f"probe-model currently only supports ONNX files, got model_type={model_type}")
 
-        artifacts = probe_onnx_model(model_path=model_path, out_dir=args.out, output_format=args.format)
-    except ProbeError as exc:
+        contract = load_contract(args.contract) if args.contract else None
+        artifacts = probe_onnx_model(
+            model_path=model_path,
+            out_dir=args.out,
+            output_format=args.format,
+            contract=contract,
+        )
+    except (ProbeError, ContractError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 

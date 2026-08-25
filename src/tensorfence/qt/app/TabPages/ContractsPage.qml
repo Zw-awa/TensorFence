@@ -43,7 +43,7 @@ TabPage {
                     width: parent.width
                     height: size_.line * 2.5
                     onHoveredChanged: if (hovered) page.introText = qsTr("# 载入契约\n\n载入 YAML 契约文件，查看输入输出语义。\n\n适合先核对 layout、shape、颜色通道、输入范围。")
-                    onClicked: qmlapp.pickInputFile()
+                    onClicked: qmlapp.pickFile("contract")
                 }
 
                 Button_ {
@@ -51,7 +51,8 @@ TabPage {
                     width: parent.width
                     height: size_.line * 2.5
                     onHoveredChanged: if (hovered) page.introText = qsTr("# 静态校验\n\n尽早发现 layout、shape、字段缺失、输入输出未对齐之类的问题。\n\n这一步越早做，后面浪费的时间越少。")
-                    onClicked: qmlapp.acknowledge(qsTr("静态校验"))
+                    enabled: !appController.commandRunning
+                    onClicked: appController.runContractValidation()
                 }
 
                 Button_ {
@@ -67,10 +68,23 @@ TabPage {
         rightItem: Panel {
             anchors.fill: parent
 
-            MarkdownView {
+            Column {
                 anchors.fill: parent
                 anchors.margins: size_.spacing * 2
-                text: page.introText
+                spacing: size_.spacing
+
+                LoadedFilesSummary {
+                    width: parent.width
+                    entries: [
+                        { label: qsTr("契约"), path: appController.contractPath }
+                    ]
+                }
+
+                MarkdownView {
+                    width: parent.width
+                    height: Math.max(0, parent.height - y)
+                    text: appController.commandOutput.length > 0 ? "# 命令输出\n\n```text\n" + appController.commandOutput + "\n```" : page.introText
+                }
             }
         }
     }

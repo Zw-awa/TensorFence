@@ -170,10 +170,21 @@ tensorfence dump-tensors \
 
 Python 写入 API、manifest schema、量化元数据和 framework/RKNN 抓取示例见 [docs/tensor-artifact-v1.md](./docs/tensor-artifact-v1.md)。
 
+对于真实的 FP16/INT8 故障，先用 `validate-capture` 验证 artifact 的输入和预处理证据一致，再运行阶段对比：
+
+```powershell
+tensorfence validate-capture `
+  --contract contract.yaml `
+  --artifact rknn-fp16=fp16.npz `
+  --artifact rknn-int8=int8.npz
+```
+
+它要求 canonical artifact、相同的 `input_sha256` 和 `preprocess_id`；raw INT8 输出还必须携带精确的 `scale` 与 `zero_point`。完整采集协议和脱敏样例模板见 [examples/diagnostic-cases/README.zh-CN.md](./examples/diagnostic-cases/README.zh-CN.md)。
+
 ## Qt UI 构建
 
 Qt UI 通过项目根目录和 `src/tensorfence/qt/` 子目录中的 CMake 配置。
-它的职责是查看和轻量编辑契约、报告以及阶段差分 artifact，而不是再做一套执行引擎。
+它的职责是查看和编排契约、报告以及阶段差分 artifact；诊断规则始终由 Python CLI 执行，界面不再做一套执行引擎。
 
 要求：
 
@@ -199,12 +210,14 @@ cmake --build build/qt --config Release
 - 单配置生成器：`build/qt/bin/tensorfence_qt`
 - Windows 多配置生成器：`build/qt/bin/Release/tensorfence_qt.exe`
 
-当前 Qt 版本会打开一个白色工作台壳层，包含：
+当前 Qt 工作台包含：
 
 - 左侧导航栏
 - 支持拖拽导入的首页工作台
-- Contracts、Reports、Compare、Settings 占位页
-- 实时状态和反馈区域
+- Contracts 页可运行 `check-contract`
+- Compare 页可校验 FP16/INT8 evidence，并以契约探查 ONNX 输出和重复后处理风险
+- Reports 页可交给系统查看器打开 Markdown、HTML、JSON 报告
+- Settings 页明确选择 Windows 本机的 `tensorfence.exe` 或 `python.exe`，实时显示命令输出和退出状态
 
 Windows 下统一使用一个 Qt 入口：
 
@@ -217,6 +230,8 @@ Windows 下统一使用一个 Qt 入口：
 脚本按“命令行参数、环境变量、`.env`、自动发现”的顺序定位 Qt，并固定使用该安装中的 CMake、MinGW 和 `MinGW Makefiles`。需要本地配置时，将 `.env.example` 复制为 `.env` 并填写 `QT_ROOT`、`QT_VERSION`；`.env` 不会被 Git 提交。检测到 Codex 环境时会自动启用 agent-safe CMake 分支，旧 `.bat` 文件仍作为兼容包装保留。
 
 Qt UI 的许可说明见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
+
+Qt 默认只调用显式指定的 Windows 本机 CLI，不会隐式进入 WSL，也不会猜测 Conda 环境。RKNN Toolkit2、板端推理和 WSL 负责导出与采集；把生成的 canonical artifact 导入 Qt 或 CLI 后，再验证同一输入、相同预处理下的 FP16/INT8 差异。
 
 ## Agent 指南
 

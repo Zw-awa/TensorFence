@@ -42,7 +42,7 @@ TabPage {
                     width: parent.width
                     height: size_.line * 2.5
                     onHoveredChanged: if (hovered) page.introText = qsTr("# 载入报告\n\n载入 `report.json`、`report.md`、`final_summary.json`。\n\n适合快速回看一次阶段对比跑出来的结果。")
-                    onClicked: qmlapp.pickInputFile()
+                    onClicked: qmlapp.pickFile("report")
                 }
 
                 Button_ {
@@ -50,7 +50,7 @@ TabPage {
                     width: parent.width
                     height: size_.line * 2.5
                     onHoveredChanged: if (hovered) page.introText = qsTr("# 查看漂移\n\n优先关注中间张量差分、统计量和最终结论。\n\n不要先陷在最终框里猜。")
-                    onClicked: qmlapp.acknowledge(qsTr("查看漂移"))
+                    onClicked: appController.openReport()
                 }
 
                 Button_ {
@@ -58,7 +58,7 @@ TabPage {
                     width: parent.width
                     height: size_.line * 2.5
                     onHoveredChanged: if (hovered) page.introText = qsTr("# 导出摘要\n\n导出适合沟通和归档的精简报告。\n\n后面可以继续扩成 Markdown / HTML / 结构化 JSON。")
-                    onClicked: qmlapp.acknowledge(qsTr("导出摘要"))
+                    onClicked: appController.openReport()
                 }
             }
         }
@@ -66,10 +66,23 @@ TabPage {
         rightItem: Panel {
             anchors.fill: parent
 
-            MarkdownView {
+            Column {
                 anchors.fill: parent
                 anchors.margins: size_.spacing * 2
-                text: page.introText
+                spacing: size_.spacing
+
+                LoadedFilesSummary {
+                    width: parent.width
+                    entries: [
+                        { label: qsTr("诊断报告"), path: appController.reportPath }
+                    ]
+                }
+
+                MarkdownView {
+                    width: parent.width
+                    height: Math.max(0, parent.height - y)
+                    text: appController.commandOutput.length > 0 ? "# 最近命令输出\n\n```text\n" + appController.commandOutput + "\n```" : page.introText
+                }
             }
         }
     }

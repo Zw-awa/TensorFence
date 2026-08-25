@@ -23,7 +23,7 @@ from ..artifacts.reports.stage_report import (
     write_tensor_diffs_json,
 )
 from ..artifacts.tensor_artifact import QuantizationMetadata, TensorArtifactError, load_tensor_artifact
-from .contracts import load_contract
+from .contracts import ModelContract, TensorSpec, load_contract
 from .diff import TensorDiff, compare_arrays, summarize_array
 from .preprocess import PreprocessError, prepare_image
 from .validation import has_errors, validate_contract
@@ -359,6 +359,60 @@ def _with_quantization_resolution(
         under_resolution_count=count,
         under_resolution_fraction=float(count / left_values.size),
         under_resolution_zero_fraction=zero_fraction,
+    )
+
+
+def _classification_under_resolution_reason(
+    contract: ModelContract,
+    output_spec: TensorSpec,
+    left_values: np.ndarray,
+    right_values: np.ndarray,
+    metadata: QuantizationMetadata | None,
+    thresholds: ComparisonThresholds,
+) -> str | None:
+    """Attribute collapse to score channels only when their axis is structurally unambiguous."""
+    decode = contract.decode
+    if metadata is None or decode is None or not left_values.shape == right_values.shape:
+        return None
+    if output_spec.semantic not in {"raw_predictions", "scores", "class_scores"}:
+        return None
+    class_count = decode.num_classes
+    candidate_axes = [
+        index
+        for index, dimension in enumerate(left_values.shape)
+        if index > 0 and dimension in {class_count, class_count + 4}
+    ]
+    if len(candidate_axes) != 1:
+        return None
+    axis = candidate_axes[0]
+    if left_values.shape[axis] == class_count + 4:
+        selector: list[slice] = [slice(None)] * left_values.ndim
+        selector[axis] = slice(4, None)
+        selected = tuple(selector)
+        channel_label = f"axis {axis}, channels 4..{class_count + 3}"
+    else:
+        selected = tuple(slice(None) for _ in range(left_values.ndim))
+        channel_label = f"axis {axis}, {class_count} class channel(s)"
+
+    scale = _quantization_parameter(metadata.scale, metadata, left_values.ndim)
+    scale_values = np.broadcast_to(np.asarray(scale, dtype=np.float64), left_values.shape)[selected]
+    reference = left_values[selected].astype(np.float64, copy=False)
+    candidate = right_values[selected].astype(np.float64, copy=False)
+    mask = np.isfinite(reference) & np.isfinite(candidate) & (reference != 0) & (np.abs(reference) < scale_values * 0.5)
+    count = int(np.count_nonzero(mask))
+    if not count:
+        return None
+    fraction = count / reference.size
+    zero_fraction = float(np.mean(candidate[mask] == 0))
+    if (
+        count < thresholds.small_value_min_count
+        or fraction < thresholds.small_value_min_fraction
+        or zero_fraction < thresholds.small_value_zero_fraction
+    ):
+        return None
+    return (
+        "classification-score quantization under-resolution: "
+        f"{channel_label}; {zero_fraction:.1%} of {count} sub-half-step reference scores became zero"
     )
 
 
@@ -738,6 +792,18 @@ def compare_stages(
             )
             element_count = int(getattr(left.outputs[output_name], "size", 0))
             status, reasons = _diff_status(diff, thresholds, element_count)
+            output_spec = next(spec for spec in contract.outputs if spec.name == output_name)
+            score_reason = _classification_under_resolution_reason(
+                contract,
+                output_spec,
+                left_values,
+                right_values,
+                right.quantization.get(output_name),
+                thresholds,
+            )
+            if score_reason is not None:
+                reasons.append(score_reason)
+                status = "drift"
             pair_diffs.append(
                 StagePairDiffEntry(
                     left_stage=left.stage,

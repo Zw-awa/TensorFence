@@ -17,6 +17,7 @@ from .draft_contract import build_parser as build_draft_contract_parser
 from .dump_tensors import build_parser as build_dump_tensors_parser
 from .inspect_image import build_parser as build_inspect_image_parser
 from .probe_model import build_parser as build_probe_model_parser
+from .validate_capture import build_parser as build_validate_capture_parser
 
 
 def _module_status(module_name: str) -> str:
@@ -37,7 +38,7 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
         f"jinja2: {_module_status('jinja2')}",
         "",
         "Available commands: doctor, check-contract, init, inspect-image, probe-model, draft-contract, "
-        "dump-tensors, compare-stages.",
+        "dump-tensors, validate-capture, compare-stages.",
         "MVP status: ONNX direct execution and artifact comparison are ready; "
         "direct framework/RKNN execution is not implemented.",
     ]
@@ -89,6 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_probe_model_parser(subparsers)
     build_draft_contract_parser(subparsers)
     build_dump_tensors_parser(subparsers)
+    build_validate_capture_parser(subparsers)
     build_compare_stages_parser(subparsers)
 
     return parser

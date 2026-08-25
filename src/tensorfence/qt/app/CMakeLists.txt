@@ -24,6 +24,7 @@ set(TENSORFENCE_QML_FILES
     Widgets/DoubleRowLayout.qml
     Widgets/Icon_.qml
     Widgets/IconButton.qml
+    Widgets/LoadedFilesSummary.qml
     Widgets/MarkdownView.qml
     Widgets/MouseAreaBackgroud.qml
     Widgets/Panel.qml

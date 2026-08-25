@@ -75,6 +75,124 @@ class TensorArtifactTests(unittest.TestCase):
         self.assertEqual(tensor.quantization.scale, 0.02265625)
         self.assertEqual(tensor.quantization.zero_point, -128)
 
+    def test_validate_capture_accepts_matching_fp16_and_int8_evidence(self) -> None:
+        temp_root = self._make_temp_root()
+        contract = temp_root / "contract.yaml"
+        fp16 = temp_root / "fp16.npz"
+        int8 = temp_root / "int8.npz"
+        contract.write_text(
+            """
+name: capture-test
+task: detection
+source_framework: pytorch
+target_runtime: rknn
+input:
+  name: images
+  shape: [1, 3, 4, 4]
+  dtype: float32
+  layout: NCHW
+  semantic: model_input
+outputs:
+  - name: output0
+    shape: [1, 1, 2]
+    dtype: float32
+    layout: N/A
+    semantic: raw_predictions
+preprocess:
+  input_color_space: RGB
+  output_color_space: RGB
+  input_layout: HWC
+  output_layout: NCHW
+  resize:
+    mode: stretch
+    target_size: [4, 4]
+    keep_aspect_ratio: false
+""",
+            encoding="utf-8",
+        )
+        provenance = {
+            "input_sha256": "a" * 64,
+            "preprocess_id": "rgb-stretch4-nchw",
+        }
+        write_tensor_artifact(fp16, {"output0": np.ones((1, 1, 2), dtype=np.float16)}, stage="rknn", source="fp16", provenance=provenance)
+        write_tensor_artifact(
+            int8,
+            {"output0": np.asarray([[[0, 1]]], dtype=np.int8)},
+            stage="rknn",
+            source="int8",
+            provenance=provenance,
+            quantization={"output0": {"scale": 2.9, "zero_point": 0}},
+        )
+
+        self.assertEqual(
+            0,
+            main(
+                [
+                    "validate-capture",
+                    "--contract",
+                    str(contract),
+                    "--artifact",
+                    f"fp16={fp16}",
+                    "--artifact",
+                    f"int8={int8}",
+                ]
+            ),
+        )
+
+    def test_validate_capture_rejects_integer_without_quantization_evidence(self) -> None:
+        temp_root = self._make_temp_root()
+        contract = temp_root / "contract.yaml"
+        fp16 = temp_root / "fp16.npz"
+        int8 = temp_root / "int8.npz"
+        contract.write_text(
+            """
+name: capture-test
+task: detection
+source_framework: pytorch
+target_runtime: rknn
+input:
+  name: images
+  shape: [1, 3, 4, 4]
+  dtype: float32
+  layout: NCHW
+  semantic: model_input
+outputs:
+  - name: output0
+    shape: [1, 1, 2]
+    dtype: float32
+    layout: N/A
+    semantic: raw_predictions
+preprocess:
+  input_color_space: RGB
+  output_color_space: RGB
+  input_layout: HWC
+  output_layout: NCHW
+  resize:
+    mode: stretch
+    target_size: [4, 4]
+    keep_aspect_ratio: false
+""",
+            encoding="utf-8",
+        )
+        provenance = {"input_sha256": "a" * 64, "preprocess_id": "rgb-stretch4-nchw"}
+        write_tensor_artifact(fp16, {"output0": np.ones((1, 1, 2), dtype=np.float16)}, stage="rknn", source="fp16", provenance=provenance)
+        write_tensor_artifact(int8, {"output0": np.zeros((1, 1, 2), dtype=np.int8)}, stage="rknn", source="int8", provenance=provenance)
+
+        self.assertEqual(
+            2,
+            main(
+                [
+                    "validate-capture",
+                    "--contract",
+                    str(contract),
+                    "--artifact",
+                    f"fp16={fp16}",
+                    "--artifact",
+                    f"int8={int8}",
+                ]
+            ),
+        )
+
     def test_adapter_ignores_manifest_key(self) -> None:
         temp_root = self._make_temp_root()
         target = temp_root / "framework.npz"

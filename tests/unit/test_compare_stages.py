@@ -499,6 +499,43 @@ class CompareStagesTests(unittest.TestCase):
         self.assertEqual(rknn["outputs"][0]["dequantized_zero_fraction"], 1.0)
         self.assertEqual(rknn["outputs"][0]["saturation_fraction"], 0.0)
 
+    def test_compare_stages_attributes_collapse_to_yolo_score_channel(self) -> None:
+        temp_root = self._make_temp_root()
+        contract_path = temp_root / "contract.yaml"
+        image_path = temp_root / "sample.png"
+        framework_path = temp_root / "framework.npz"
+        rknn_path = temp_root / "rknn.npz"
+        out_dir = temp_root / "out"
+
+        contract_path.write_text(CONTRACT_TEXT.replace("[1, 1, 6]", "[1, 5, 6]"), encoding="utf-8")
+        self._write_sample_image(image_path)
+        reference = np.zeros((1, 5, 6), dtype=np.float32)
+        reference[:, 4, :] = np.linspace(0.0005, 0.002, 6, dtype=np.float32)
+        write_tensor_artifact(framework_path, {"output0": reference}, stage="framework", source="pytorch")
+        write_tensor_artifact(
+            rknn_path,
+            {"output0": np.full(reference.shape, -128, dtype=np.int8)},
+            stage="rknn",
+            source="rknn-runtime",
+            quantization={"output0": {"scale": 2.9, "zero_point": -128}},
+        )
+
+        self.assertEqual(
+            0,
+            main(
+                [
+                    "compare-stages",
+                    "--contract", str(contract_path),
+                    "--image", str(image_path),
+                    "--framework-out", str(framework_path),
+                    "--rknn-out", str(rknn_path),
+                    "--out", str(out_dir),
+                ]
+            ),
+        )
+        diff = json.loads((out_dir / "tensor_diffs.json").read_text(encoding="utf-8"))[0]
+        self.assertTrue(any("classification-score quantization under-resolution" in item for item in diff["reasons"]))
+
     def test_compare_stages_rejects_raw_integer_without_quantization_metadata(self) -> None:
         temp_root = self._make_temp_root()
         contract_path = temp_root / "contract.yaml"

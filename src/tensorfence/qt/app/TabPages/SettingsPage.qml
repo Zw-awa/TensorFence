@@ -38,17 +38,19 @@ TabPage {
                 spacing: size_.spacing * 0.5
 
                 Button_ {
-                    text_: qsTr("Qt 界面")
+                    text_: qsTr("选择 TensorFence CLI")
                     width: parent.width
                     height: size_.line * 2.5
-                    onHoveredChanged: if (hovered) page.introText = qsTr("# Qt 界面\n\n当前前端采用 `CLI first + Qt UI`。\n\nCLI 负责能力，Qt 负责组织、浏览和反馈。")
+                    onHoveredChanged: if (hovered) page.introText = qsTr("# TensorFence CLI\n\n选择已安装的 `tensorfence.exe`。它直接执行 TensorFence 命令。\n\n适合已执行过 pip install 的环境。")
+                    onClicked: qmlapp.pickFile("cli")
                 }
 
                 Button_ {
                     text_: qsTr("Python / Conda")
                     width: parent.width
                     height: size_.line * 2.5
-                    onHoveredChanged: if (hovered) page.introText = qsTr("# Python / Conda\n\nPython 依赖统一由项目环境管理，不污染主环境。\n\n后续 CLI、对比、报告生成都依赖这里。")
+                    onHoveredChanged: if (hovered) page.introText = qsTr("# Python / Conda\n\n选择 Conda 环境中的 `python.exe`。Qt 会通过 `python.exe -m tensorfence` 执行命令。\n\n当前环境建议选择 `F:/miniforge3/envs/tensorfence/python.exe`。")
+                    onClicked: qmlapp.pickFile("python")
                 }
 
                 Button_ {
@@ -56,6 +58,7 @@ TabPage {
                     width: parent.width
                     height: size_.line * 2.5
                     onHoveredChanged: if (hovered) page.introText = qsTr("# WSL / RKNN\n\nWindows 侧做组织与查看，Linux / WSL 侧负责 RKNN 相关工作流。\n\n真机测试前，先把两边环境链路打通。")
+                    onClicked: appController.notifyUnavailable(qsTr("WSL / RKNN"))
                 }
 
                 Button_ {
@@ -63,6 +66,7 @@ TabPage {
                     width: parent.width
                     height: size_.line * 2.5
                     onHoveredChanged: if (hovered) page.introText = qsTr("# 真机测试\n\n把契约、模型、图像、阶段输出准备齐，再上板排查。\n\n前面准备越规范，真机阶段越不容易浪费时间。")
+                    onClicked: appController.notifyUnavailable(qsTr("真机测试"))
                 }
             }
         }
@@ -70,10 +74,23 @@ TabPage {
         rightItem: Panel {
             anchors.fill: parent
 
-            MarkdownView {
+            Column {
                 anchors.fill: parent
                 anchors.margins: size_.spacing * 2
-                text: page.introText
+                spacing: size_.spacing
+
+                LoadedFilesSummary {
+                    width: parent.width
+                    entries: [
+                        { label: qsTr("本机 CLI / Python"), path: appController.cliPath }
+                    ]
+                }
+
+                MarkdownView {
+                    width: parent.width
+                    height: Math.max(0, parent.height - y)
+                    text: "# 工程环境\n\nQt 将只调用此 Windows 本机可执行文件。WSL/RKNN 负责采集，再导入 artifact 进行诊断。"
+                }
             }
         }
     }

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +41,7 @@ class ModelFacts:
     nodes: list[NodeFact]
     operator_histogram: dict[str, int]
     warnings: list[str]
+    output_contract: dict[str, Any] = field(default_factory=dict)
     schema_version: str = MODEL_FACTS_SCHEMA_VERSION
 
 
@@ -105,6 +106,7 @@ def model_facts_from_dict(data: dict[str, Any]) -> ModelFacts:
             ],
             operator_histogram={str(key): int(value) for key, value in data.get("operator_histogram", {}).items()},
             warnings=[str(item) for item in data.get("warnings", [])],
+            output_contract=dict(data.get("output_contract", {})),
             schema_version=schema_version,
         )
     except KeyError as exc:
@@ -143,6 +145,7 @@ def write_ops_summary_json(model_facts: ModelFacts, path: str | Path) -> Path:
         "output_count": len(model_facts.outputs),
         "initializer_count": len(model_facts.initializers),
         "operator_histogram": model_facts.operator_histogram,
+        "output_contract": model_facts.output_contract,
         "warnings": model_facts.warnings,
     }
     target.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -162,12 +165,20 @@ def write_graph_summary_markdown(model_facts: ModelFacts, path: str | Path) -> P
         f"- Outputs: `{len(model_facts.outputs)}`",
         f"- Nodes: `{len(model_facts.nodes)}`",
         f"- Initializers: `{len(model_facts.initializers)}`",
+        f"- Output contract: `{model_facts.output_contract.get('kind', 'unknown')}` "
+        f"({model_facts.output_contract.get('confidence', 'low')})",
         "",
         "## Operator Histogram",
         "",
     ]
     for op_type, count in sorted(model_facts.operator_histogram.items()):
         lines.append(f"- `{op_type}`: {count}")
+
+    evidence = model_facts.output_contract.get("evidence", [])
+    if evidence:
+        lines.extend(["", "## Output Contract Evidence", ""])
+        for item in evidence:
+            lines.append(f"- {item}")
 
     if model_facts.warnings:
         lines.extend(["", "## Warnings", ""])

@@ -36,6 +36,8 @@ int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
     app.setApplicationName("TensorFence");
     app.setApplicationDisplayName("TensorFence");
+    app.setOrganizationName("TensorFence");
+    app.setOrganizationDomain("tensorfence.local");
 
     QQuickStyle::setStyle("Basic");
 

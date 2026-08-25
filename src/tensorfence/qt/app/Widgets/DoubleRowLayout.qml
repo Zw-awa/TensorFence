@@ -130,47 +130,54 @@ Item {
                 onReleased: root.clampSplitter()
             }
 
-            Column {
-                id: controlsColumn
+            Item {
+                id: controlsContainer
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: size_.spacing
-                spacing: Math.max(3, size_.smallSpacing)
+                width: controlsColumn.width
+                height: controlsColumn.height
                 visible: splitterMouseArea.containsMouse || controlsMouse.containsMouse
 
-                Repeater {
-                    model: [
-                        { icon: "arrow_to_left", action: "left" },
-                        { icon: "arrow_to_left", action: "right", mirror: true },
-                        { icon: "arrow_to_center", action: "both" }
-                    ]
+                Column {
+                    id: controlsColumn
+                    anchors.fill: parent
+                    spacing: Math.max(3, size_.smallSpacing)
 
-                    delegate: Rectangle {
-                        required property var modelData
-                        width: size_.line * 1.6
-                        height: size_.line * 1.6
-                        radius: size_.btnRadius
-                        color: controlMouse.containsMouse ? theme.coverColor2 : theme.specialBgColor
+                    Repeater {
+                        model: [
+                            { icon: "arrow_to_left", action: "left" },
+                            { icon: "arrow_to_left", action: "right", mirror: true },
+                            { icon: "arrow_to_center", action: "both" }
+                        ]
 
-                        Icon_ {
-                            anchors.fill: parent
-                            anchors.margins: 3
-                            icon: modelData.icon
-                            mirror: !!modelData.mirror
-                            color: theme.specialTextColor
-                        }
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: size_.line * 1.6
+                            height: size_.line * 1.6
+                            radius: size_.btnRadius
+                            color: controlMouse.containsMouse ? theme.coverColor2 : theme.specialBgColor
 
-                        MouseArea {
-                            id: controlMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onClicked: {
-                                if (modelData.action === "left") {
-                                    root.showLeftOnly()
-                                } else if (modelData.action === "right") {
-                                    root.showRightOnly()
-                                } else {
-                                    root.showBoth()
+                            Icon_ {
+                                anchors.fill: parent
+                                anchors.margins: 3
+                                icon: modelData.icon
+                                mirror: !!modelData.mirror
+                                color: theme.specialTextColor
+                            }
+
+                            MouseArea {
+                                id: controlMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: {
+                                    if (modelData.action === "left") {
+                                        root.showLeftOnly()
+                                    } else if (modelData.action === "right") {
+                                        root.showRightOnly()
+                                    } else {
+                                        root.showBoth()
+                                    }
                                 }
                             }
                         }

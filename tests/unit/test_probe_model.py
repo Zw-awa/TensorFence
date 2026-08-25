@@ -55,6 +55,23 @@ class ProbeModelTests(unittest.TestCase):
         model = helper.make_model(graph, producer_name="tensorfence-test")
         onnx.save_model(model, str(path))
 
+    def _write_ppyoloe_onnx(self, path: Path) -> None:
+        image = helper.make_tensor_value_info("images", TensorProto.FLOAT, [1, 3, 320, 320])
+        boxes = helper.make_tensor_value_info("boxes", TensorProto.FLOAT, [1, 2100, 4])
+        scores = helper.make_tensor_value_info("scores", TensorProto.FLOAT, [1, 10, 2100])
+        box_value = helper.make_tensor("box_value", TensorProto.FLOAT, [1, 2100, 4], [0.0] * 8400)
+        score_value = helper.make_tensor("score_value", TensorProto.FLOAT, [1, 10, 2100], [0.0] * 21000)
+        graph = helper.make_graph(
+            [
+                helper.make_node("Constant", [], ["boxes"], value=box_value),
+                helper.make_node("Constant", [], ["scores"], value=score_value),
+            ],
+            "ppyoloe-graph",
+            [image],
+            [boxes, scores],
+        )
+        onnx.save_model(helper.make_model(graph), str(path))
+
     def test_probe_model_writes_artifacts(self) -> None:
         temp_root = self._make_temp_root()
         model_path = temp_root / "sample.onnx"
@@ -113,6 +130,64 @@ class ProbeModelTests(unittest.TestCase):
         self.assertTrue(any("duplicate postprocessing" in warning for warning in facts["warnings"]))
         self.assertEqual(summary["warnings"], facts["warnings"])
         self.assertIn("embedded postprocess detected", markdown)
+        self.assertEqual(facts["output_contract"]["kind"], "end_to_end_nms")
+
+    def test_probe_model_identifies_ppyoloe_boxes_and_scores_contract(self) -> None:
+        temp_root = self._make_temp_root()
+        model_path = temp_root / "ppyoloe.onnx"
+        out_dir = temp_root / "out"
+        self._write_ppyoloe_onnx(model_path)
+
+        self.assertEqual(0, main(["probe-model", "--model", str(model_path), "--out", str(out_dir)]))
+        facts = json.loads((out_dir / "model_facts.json").read_text(encoding="utf-8"))
+        self.assertEqual(facts["output_contract"]["kind"], "ppyoloe_boxes_scores")
+        self.assertEqual(facts["output_contract"]["confidence"], "high")
+
+    def test_probe_model_flags_contract_nms_against_embedded_nms(self) -> None:
+        temp_root = self._make_temp_root()
+        model_path = temp_root / "nms.onnx"
+        contract_path = temp_root / "contract.yaml"
+        out_dir = temp_root / "out"
+        self._write_nms_onnx(model_path)
+        contract_path.write_text(
+            """
+name: nms-conflict
+task: detection
+source_framework: onnx
+target_runtime: rknn
+input:
+  name: images
+  shape: [1, 3, 4, 4]
+  dtype: float32
+  layout: NCHW
+  semantic: model_input
+outputs:
+  - name: selected_indices
+    shape: [1, 3]
+    dtype: int64
+    layout: N/A
+    semantic: final_detections
+preprocess:
+  input_color_space: RGB
+  output_color_space: RGB
+  input_layout: HWC
+  output_layout: NCHW
+  resize:
+    mode: stretch
+    target_size: [4, 4]
+    keep_aspect_ratio: false
+nms:
+  score_threshold: 0.25
+  iou_threshold: 0.45
+""",
+            encoding="utf-8",
+        )
+        self.assertEqual(
+            0,
+            main(["probe-model", "--model", str(model_path), "--contract", str(contract_path), "--out", str(out_dir)]),
+        )
+        facts = json.loads((out_dir / "model_facts.json").read_text(encoding="utf-8"))
+        self.assertTrue(any("duplicate postprocessing detected" in item for item in facts["warnings"]))
 
     def test_probe_model_rejects_unsupported_model_type(self) -> None:
         temp_root = self._make_temp_root()

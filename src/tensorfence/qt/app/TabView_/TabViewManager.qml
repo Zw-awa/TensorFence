@@ -15,6 +15,7 @@ Item {
     property alias pageList: page.pageList
     property bool barIsLock: false
     property int showPageIndex: -1
+    property var pageHistory: []
 
     function init() {
         page.initListUrl()
@@ -79,6 +80,9 @@ Item {
         if (!isIndex(infoIndex, infoList)) {
             return
         }
+        if (showPageIndex === index && pageList[index].info.key !== infoList[infoIndex].key) {
+            pageHistory.push(pageList[index].info.key)
+        }
         for (let i = 0; i < pageList.length; i++) {
             if (pageList[i].infoIndex === infoIndex) {
                 showTabPage(i)
@@ -114,6 +118,10 @@ Item {
     }
 
     function showPageKey(key) {
+        showPageKeyWithoutHistory(key)
+    }
+
+    function showPageKeyWithoutHistory(key) {
         const infoIndex = findInfoIndexByKey(key)
         if (infoIndex < 0) {
             return
@@ -133,6 +141,27 @@ Item {
         if (index >= 0) {
             showTabPage(index)
         }
+    }
+
+    function goBack() {
+        if (pageHistory.length === 0 || !isIndex(showPageIndex, pageList)) {
+            return
+        }
+        const previousKey = pageHistory.pop()
+        const infoIndex = findInfoIndexByKey(previousKey)
+        if (!isIndex(infoIndex, infoList)) {
+            return
+        }
+
+        // Browser-like back: replace the current tab's page instead of
+        // switching to or creating a separate tab.
+        if (!page.changePage(showPageIndex, infoIndex)) {
+            return
+        }
+        if (bar) {
+            bar.changeTab(showPageIndex, infoList[infoIndex].title)
+        }
+        showTabPage(showPageIndex)
     }
 
     function moveTabPage(index, go) {

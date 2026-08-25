@@ -91,6 +91,26 @@ Window {
         }
 
         function pickInputFile() {
+            pickFile("")
+        }
+
+        function pickFile(role) {
+            openDialog.fileRole = role
+            if (role === "contract") {
+                openDialog.nameFilters = [qsTr("契约文件 (*.yaml *.yml)")]
+            } else if (role === "model") {
+                openDialog.nameFilters = [qsTr("ONNX 模型 (*.onnx)")]
+            } else if (role === "fp16" || role === "int8") {
+                openDialog.nameFilters = [qsTr("Tensor artifact (*.npz)")]
+            } else if (role === "report") {
+                openDialog.nameFilters = [qsTr("诊断报告 (*.json *.md *.html)")]
+            } else if (role === "cli") {
+                openDialog.nameFilters = [qsTr("TensorFence CLI (tensorfence.exe)")]
+            } else if (role === "python") {
+                openDialog.nameFilters = [qsTr("Python 可执行文件 (python.exe)")]
+            } else {
+                openDialog.nameFilters = [qsTr("TensorFence 文件 (*.yaml *.yml *.json *.md *.html *.onnx *.rknn *.npz)"), qsTr("所有文件 (*)")]
+            }
             openDialog.open()
         }
 
@@ -111,12 +131,26 @@ Window {
         id: openDialog
         title: qsTr("选择文件")
         fileMode: FileDialog.OpenFile
+        property string fileRole: ""
         nameFilters: [
             qsTr("TensorFence 文件 (*.yaml *.yml *.json *.md *.html *.onnx *.rknn *.npz)"),
             qsTr("所有文件 (*)")
         ]
         onAccepted: {
-            qmlapp.openUrls([selectedFile])
+            let path = selectedFile.toString()
+            if (path.startsWith("file:///")) {
+                path = path.substring(8)
+            } else if (path.startsWith("file://")) {
+                path = path.substring(7)
+            }
+            path = decodeURIComponent(path)
+            if (fileRole === "cli" || fileRole === "python") {
+                appController.setCliPath(path)
+            } else if (fileRole.length > 0) {
+                appController.setSessionPath(fileRole, path)
+            } else {
+                qmlapp.openUrls([selectedFile])
+            }
         }
     }
 

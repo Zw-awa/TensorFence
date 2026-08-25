@@ -28,6 +28,21 @@ RowLayout {
         }
     }
 
+    Item {
+        Layout.preferredWidth: size_.hTabBarHeight
+        Layout.fillHeight: true
+
+        IconButton {
+            anchors.fill: parent
+            anchors.margins: 4
+            icon_: "arrow_to_left"
+            color: theme.textColor
+            bgHoverColor_: theme.coverColor1
+            toolTip: qsTr("返回工作台")
+            onClicked: qmlapp.tab.goBack()
+        }
+    }
+
     Rectangle {
         id: tabsArea
         Layout.fillWidth: true
@@ -35,15 +50,6 @@ RowLayout {
         color: "transparent"
 
         property real tabWidth: Math.min(size_.line * 9, Math.max(120, (width - (qmlapp.tab.barIsLock ? 0 : addButtonWrap.width)) / Math.max(1, barManager.model.count)))
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: {
-                if (!qmlapp.tab.barIsLock) {
-                    qmlapp.tab.addNavi()
-                }
-            }
-        }
 
         Row {
             id: tabsRow
