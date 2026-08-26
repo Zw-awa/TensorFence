@@ -18,6 +18,8 @@ from .dump_tensors import build_parser as build_dump_tensors_parser
 from .inspect_image import build_parser as build_inspect_image_parser
 from .probe_model import build_parser as build_probe_model_parser
 from .validate_capture import build_parser as build_validate_capture_parser
+from .session import build_parser as build_session_parser
+from .diagnose import build_parser as build_diagnose_parser
 
 
 def _module_status(module_name: str) -> str:
@@ -92,6 +94,8 @@ def build_parser() -> argparse.ArgumentParser:
     build_dump_tensors_parser(subparsers)
     build_validate_capture_parser(subparsers)
     build_compare_stages_parser(subparsers)
+    build_session_parser(subparsers)
+    build_diagnose_parser(subparsers)
 
     return parser
 
