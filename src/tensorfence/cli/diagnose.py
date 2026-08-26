@@ -33,11 +33,9 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
         missing = [key for key in ("contract", "image") if not values[key]]
         if not values["onnx"] and not values["fp16"] and not values["int8"]:
             missing.append("onnx or artifacts")
-        if values["fp16"] and values["int8"]:
-            raise ValueError("diagnose currently requires compare-stages support for paired fp16/int8 artifacts; use validate-capture first")
         if missing:
             raise ValueError("missing required inputs: " + ", ".join(missing))
-        artifacts = compare_stages(contract_path=values["contract"], image_path=values["image"], out_dir=args.out, onnx_model=values["onnx"] or None, onnx_out=None, rknn_out=values["int8"] or values["fp16"] or None, framework_out=values["framework"] or None, report_format=args.report_format)
+        artifacts = compare_stages(contract_path=values["contract"], image_path=values["image"], out_dir=args.out, onnx_model=values["onnx"] or None, onnx_out=None, rknn_out=None, fp16_out=values["fp16"] or None, int8_out=values["int8"] or None, framework_out=values["framework"] or None, report_format=args.report_format)
         result = {"status": "ok", "report": str(artifacts.report_json), "out": str(Path(args.out).resolve())}
         print(json.dumps(result, ensure_ascii=False) if args.format == "json" else f"diagnosis complete: {artifacts.report_json}")
         return 0

@@ -22,6 +22,8 @@ def build_parser(subparsers) -> None:
     rknn_source = parser.add_mutually_exclusive_group()
     rknn_source.add_argument("--rknn", help="path to the RKNN model")
     rknn_source.add_argument("--rknn-out", help="path to precomputed RKNN outputs (.npz)")
+    parser.add_argument("--fp16-out", help="path to precomputed FP16 outputs (.npz)")
+    parser.add_argument("--int8-out", help="path to precomputed INT8 outputs (.npz)")
     parser.add_argument(
         "--map-by-order",
         action="store_true",
@@ -150,6 +152,8 @@ def cmd_compare_stages(args: argparse.Namespace) -> int:
             onnx_out=args.onnx_out,
             rknn_model=args.rknn,
             rknn_out=args.rknn_out,
+            fp16_out=args.fp16_out,
+            int8_out=args.int8_out,
             report_format=args.report_format,
             map_by_order=args.map_by_order,
             thresholds=thresholds,

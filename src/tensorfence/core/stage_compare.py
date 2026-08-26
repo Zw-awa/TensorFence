@@ -642,12 +642,13 @@ def _resolve_rknn_stage(
     input_tensor,
     expected_names: list[str],
     map_by_order: bool,
+    stage_name: str = "rknn",
 ) -> _ResolvedStage:
     if rknn_out:
         outputs, warnings = load_rknn_outputs(rknn_out, expected_names, map_by_order=map_by_order)
         metadata = _load_artifact_metadata(rknn_out, expected_names, map_by_order)
         return _ResolvedStage(
-            stage="rknn",
+            stage=stage_name,
             source_kind="npz",
             source_path=str(rknn_out),
             outputs=outputs,
@@ -666,7 +667,7 @@ def _resolve_rknn_stage(
             )
             mapped, name_warnings = _coerce_outputs(outputs, expected_names, "rknn", map_by_order)
             return _ResolvedStage(
-                stage="rknn",
+                stage=stage_name,
                 source_kind="rknn-runtime",
                 source_path=str(rknn_model),
                 outputs=mapped,
@@ -678,7 +679,7 @@ def _resolve_rknn_stage(
             )
         except RknnAdapterError as exc:
             return _ResolvedStage(
-                stage="rknn",
+                stage=stage_name,
                 source_kind="rknn-runtime",
                 source_path=str(rknn_model),
                 outputs={},
@@ -689,7 +690,7 @@ def _resolve_rknn_stage(
                 available=False,
             )
     return _ResolvedStage(
-        stage="rknn",
+        stage=stage_name,
         source_kind="not-provided",
         source_path=None,
         outputs={},
@@ -711,6 +712,8 @@ def compare_stages(
     onnx_out: str | Path | None = None,
     rknn_model: str | Path | None = None,
     rknn_out: str | Path | None = None,
+    fp16_out: str | Path | None = None,
+    int8_out: str | Path | None = None,
     report_format: str = "json",
     map_by_order: bool = False,
     thresholds: ComparisonThresholds | None = None,
@@ -750,6 +753,10 @@ def compare_stages(
             _resolve_onnx_stage(onnx_model, onnx_out, preprocess.input_tensor, expected_names, map_by_order),
             _resolve_rknn_stage(rknn_model, rknn_out, preprocess.input_tensor, expected_names, map_by_order),
         ]
+        if fp16_out:
+            stages.append(_resolve_rknn_stage(None, fp16_out, preprocess.input_tensor, expected_names, map_by_order, "fp16"))
+        if int8_out:
+            stages.append(_resolve_rknn_stage(None, int8_out, preprocess.input_tensor, expected_names, map_by_order, "int8"))
         stages = [_with_contract_warnings(stage, contract.outputs) for stage in stages]
     except (FrameworkAdapterError, OnnxRuntimeAdapterError, RknnAdapterError) as exc:
         raise StageCompareError(str(exc)) from exc
