@@ -1,0 +1,29 @@
+version: 1
+targets:
+  - name: rknn-wsl
+    profile: rknn-host
+    transport: wsl
+    connection:
+      wsl_distro: Ubuntu
+      python: python
+      conda_path: /home/your-user/miniforge3/bin/conda
+      conda_env: yolo-rknn
+    plugin_ids: [tensorfence.core]
+    version_policy:
+      python: ">=3.10"
+      rknn_toolkit: ">=2.3.2,<2.4"
+    notes: []
+
+  - name: rk3588-board
+    profile: rk3588-board
+    transport: ssh
+    connection:
+      host: 192.168.1.100
+      user: orangepi
+      port: 22
+      identity_file: ~/.ssh/id_ed25519
+      python: python3
+    plugin_ids: [tensorfence.core]
+    version_policy:
+      python: ">=3.10"
+    notes: []

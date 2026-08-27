@@ -1,0 +1,13 @@
+schema_version: 1
+id: tensorfence.core
+name: TensorFence core environment actions
+version: 1.0.0
+profiles:
+  - generic-linux
+  - rknn-host
+  - rk3588-board
+actions:
+  - id: doctor
+    description: Run TensorFence dependency diagnostics on the target.
+    command: ["{python}", "-m", "tensorfence", "doctor"]
+    read_only: true

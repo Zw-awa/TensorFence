@@ -84,6 +84,30 @@ tensorfence check-contract your.contract.yaml
 如果要做 RKNN 转换和连板流程，建议单独准备一个 WSL/Linux 环境。
 仓库里已经加了 `environment.wsl.yml`。RKNN-Toolkit2 请单独从 Rockchip 官方仓库安装对应的 Linux wheel，不要强行把它塞进当前这个 Windows 开发环境里。
 
+## 目标环境与插件
+
+TensorFence 不把 WSL、Conda、Python、SSH 或板卡路径写死在代码里。它把执行位置保存为“目标”：Windows 本机、WSL、SSH Linux x86_64 和未来的 aarch64 板卡使用同一个结构。项目配置位于 `.tensorfence/targets.yaml`，用户全局默认则使用系统配置目录；命令行参数始终优先于项目和全局配置。仓库提供了不含真实路径和凭据的示例：[.tensorfence/targets.example.yaml](./.tensorfence/targets.example.yaml)。
+
+先把实际环境保存为项目目标，例如当前的 WSL RKNN 主机：
+
+```powershell
+tensorfence target upsert `
+  --name rknn-wsl `
+  --profile rknn-host `
+  --transport wsl `
+  --wsl-distro Ubuntu `
+  --conda-path /home/your-user/miniforge3/bin/conda `
+  --conda-env yolo-rknn `
+  --python python
+
+tensorfence environment check --target rknn-wsl --format json
+tensorfence target run --name rknn-wsl --plugin tensorfence.core --action doctor --format json
+```
+
+探测和 `doctor` 是只读操作：只读取系统、架构、Python、Conda、Toolkit、板卡 NPU/驱动/运行库等事实。安装依赖、创建环境、执行模型、写入设备或更新固件不会被自动触发。SSH 只保存主机、用户、端口和私钥**路径引用**，不会保存密码或私钥内容。
+
+插件使用声明式 YAML manifest；内置插件、用户配置目录和项目 `.tensorfence/plugins/` 会按顺序发现。`tensorfence plugins list --format json` 供 UI 和 Agent 查询。插件动作默认只读，声明为有副作用的动作必须显式传 `--allow-side-effects`。
+
 ## 零基础安装
 
 如果你对 Conda、WSL、Python 环境这些还不熟，先看这两份文档：
@@ -146,7 +170,7 @@ tensorfence compare-stages \
 - `out/compare/final_summary.json`
 - 请求 HTML 时还会生成 `out/compare/report.html`
 
-环境中安装了 `onnxruntime` 时，可以传 `--onnx model.onnx` 直接执行 ONNX。这个 MVP 尚未实现 framework 和 RKNN 的直接执行；应在各自原生环境抓取输出，再把标准 `.npz` artifact 交给 TensorFence。
+环境中安装了 `onnxruntime` 时，可以传 `--onnx model.onnx` 直接执行 ONNX。配置目标后，`tensorfence rknn-run --environment-target rknn-wsl ...` 也可直接用 RKNN Toolkit2 simulator 执行 `.rknn` 并生成标准 artifact；连接真机仍需显式提供设备参数。framework 直接执行尚未实现。
 
 输出名称必须和契约一致。TensorFence 默认拒绝名称不匹配；`--map-by-order` 只是兼容旧数据的显式逃生口，启用后会在报告中留下警告。`--max-abs-error`、`--min-cosine-similarity` 和小数值归零相关阈值都可以从 CLI 调整。
 
@@ -218,6 +242,7 @@ cmake --build build/qt --config Release
 - Compare 页可校验 FP16/INT8 evidence，并以契约探查 ONNX 输出和重复后处理风险
 - Reports 页可交给系统查看器打开 Markdown、HTML、JSON 报告
 - Settings 页明确选择 Windows 本机的 `tensorfence.exe` 或 `python.exe`，实时显示命令输出和退出状态
+- Settings 页可保存并检查 WSL/RKNN 目标；保存操作调用相同的 CLI 目标配置，不依赖 Qt 私有路径
 
 Windows 下统一使用一个 Qt 入口：
 
@@ -231,7 +256,7 @@ Windows 下统一使用一个 Qt 入口：
 
 Qt UI 的许可说明见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
 
-Qt 默认只调用显式指定的 Windows 本机 CLI，不会隐式进入 WSL，也不会猜测 Conda 环境。RKNN Toolkit2、板端推理和 WSL 负责导出与采集；把生成的 canonical artifact 导入 Qt 或 CLI 后，再验证同一输入、相同预处理下的 FP16/INT8 差异。
+Qt 默认只调用显式指定的 Windows 本机 CLI，不会隐式进入 WSL，也不会猜测 Conda 环境。保存目标后，Qt 通过同一 CLI 显式调用该目标；RKNN Toolkit2、板端推理和 WSL 负责导出与采集，再把 canonical artifact 用于比较。
 
 ## Agent 指南
 
@@ -350,6 +375,7 @@ TensorFence 已达到第一个 artifact-first CLI MVP。
 - 标准张量 artifact schema v1 和 `dump-tensors` 抓取工具
 - framework/ONNX/RKNN artifact 对比及 JSON、Markdown、HTML 报告
 - 可配置的数值漂移指标和保守原因识别
+- 目标环境 profile、WSL/SSH transport、只读能力探测和声明式插件动作
 - Python 3.12 CI、真实 ONNX 集成测试和 wheel 安装后 HTML 烟测
 
 现在就能帮你：
@@ -363,10 +389,10 @@ TensorFence 已达到第一个 artifact-first CLI MVP。
 
 MVP 的明确边界：
 
-- 不直接执行 framework 和 RKNN 模型，需在外部抓取张量
+- framework 不直接执行，需在外部抓取张量；RKNN 可通过显式配置的 WSL Toolkit2 simulator 执行
 - YOLO/PP-YOLOE decode 和 NMS 当前只做声明与风险检查，不执行专用后处理
 - 预处理目前输出 float32 图片张量
-- Qt 仍是查看器/工作台预览，并未接通每一条 CLI 流程
+- Qt 已接通契约校验、模型探查、证据校验、WSL RKNN 推理和目标环境检查；SSH/板端配置编辑器仍在扩展中
 - TensorFence 不会自动改图、重导出或应用量化修复
 
 ## 支持范围
@@ -379,6 +405,7 @@ MVP 的明确边界：
 | RKNN 输出对比 | MVP，通过张量 artifact |
 | 张量 manifest 和量化元数据 | v1 |
 | 数值/量化漂移报告 | MVP |
+| 环境 profile、WSL/SSH 探测和只读插件 | MVP |
 | YOLO/PP-YOLOE decode 与 NMS 执行 | 未实现 |
 | Framework/RKNN 直接适配器 | 未实现 |
 | Qt 工作台 | 预览壳层 |

@@ -21,6 +21,11 @@ AppController::AppController(QObject *parent) : QObject(parent) {
         statusSecondary_ = savedCliPath;
         workspacePill_ = QStringLiteral("需重新选择 CLI");
     }
+    wslDistro_ = settings.value(QStringLiteral("runtime/wslDistro"), wslDistro_).toString();
+    wslTargetName_ = settings.value(QStringLiteral("runtime/wslTargetName"), wslTargetName_).toString();
+    wslCondaPath_ = settings.value(QStringLiteral("runtime/wslCondaPath"), wslCondaPath_).toString();
+    wslEnvironment_ = settings.value(QStringLiteral("runtime/wslEnvironment"), wslEnvironment_).toString();
+    wslPythonPath_ = settings.value(QStringLiteral("runtime/wslPythonPath"), wslPythonPath_).toString();
 }
 
 QString AppController::currentPage() const { return currentPage_; }
@@ -37,6 +42,12 @@ QString AppController::modelPath() const { return modelPath_; }
 QString AppController::fp16ArtifactPath() const { return fp16ArtifactPath_; }
 QString AppController::int8ArtifactPath() const { return int8ArtifactPath_; }
 QString AppController::reportPath() const { return reportPath_; }
+QString AppController::imagePath() const { return imagePath_; }
+QString AppController::wslDistro() const { return wslDistro_; }
+QString AppController::wslTargetName() const { return wslTargetName_; }
+QString AppController::wslCondaPath() const { return wslCondaPath_; }
+QString AppController::wslEnvironment() const { return wslEnvironment_; }
+QString AppController::wslPythonPath() const { return wslPythonPath_; }
 QString AppController::commandOutput() const { return commandOutput_; }
 bool AppController::commandRunning() const { return process_ != nullptr; }
 
@@ -168,6 +179,8 @@ void AppController::setSessionPath(const QString &role, const QString &path) {
         int8ArtifactPath_ = absolutePath;
     } else if (role == QStringLiteral("report")) {
         reportPath_ = absolutePath;
+    } else if (role == QStringLiteral("image")) {
+        imagePath_ = absolutePath;
     } else {
         emit bannerRequested(QStringLiteral("未知文件角色"), QStringLiteral("warning"));
         return;
@@ -180,6 +193,46 @@ void AppController::setSessionPath(const QString &role, const QString &path) {
     emit recentFilesChanged();
     emit bannerRequested(QStringLiteral("已载入 %1：%2").arg(displayName, info.fileName()), QStringLiteral("success"));
     emit stateChanged();
+}
+
+void AppController::setWslConfiguration(const QString &targetName, const QString &distro, const QString &condaPath, const QString &environment, const QString &pythonPath) {
+    if (targetName.trimmed().isEmpty() || distro.trimmed().isEmpty() || (condaPath.trimmed().isEmpty() != environment.trimmed().isEmpty())) {
+        emit bannerRequested(QStringLiteral("目标名和 WSL 发行版不能为空；Conda 路径和环境名需同时填写或同时留空"), QStringLiteral("warning"));
+        return;
+    }
+    wslTargetName_ = targetName.trimmed();
+    wslDistro_ = distro.trimmed();
+    wslCondaPath_ = condaPath.trimmed();
+    wslEnvironment_ = environment.trimmed();
+    wslPythonPath_ = pythonPath.trimmed();
+    QSettings settings;
+    settings.setValue(QStringLiteral("runtime/wslDistro"), wslDistro_);
+    settings.setValue(QStringLiteral("runtime/wslTargetName"), wslTargetName_);
+    settings.setValue(QStringLiteral("runtime/wslCondaPath"), wslCondaPath_);
+    settings.setValue(QStringLiteral("runtime/wslEnvironment"), wslEnvironment_);
+    settings.setValue(QStringLiteral("runtime/wslPythonPath"), wslPythonPath_);
+    settings.sync();
+    QStringList arguments = {QStringLiteral("target"), QStringLiteral("upsert"), QStringLiteral("--name"), wslTargetName_,
+        QStringLiteral("--profile"), QStringLiteral("rknn-host"), QStringLiteral("--transport"), QStringLiteral("wsl"),
+        QStringLiteral("--wsl-distro"), wslDistro_, QStringLiteral("--global")};
+    if (!wslCondaPath_.isEmpty()) {
+        arguments << QStringLiteral("--conda-path") << wslCondaPath_ << QStringLiteral("--conda-env") << wslEnvironment_;
+    }
+    if (!wslPythonPath_.isEmpty()) {
+        arguments << QStringLiteral("--python") << wslPythonPath_;
+    }
+    runCli(QStringLiteral("保存 WSL / RKNN 环境"), arguments, QDir::currentPath());
+}
+
+void AppController::discoverWslEnvironment() {
+    if (wslTargetName_.trimmed().isEmpty()) {
+        emit bannerRequested(QStringLiteral("请先保存 WSL 目标配置"), QStringLiteral("warning"));
+        return;
+    }
+    runCli(
+        QStringLiteral("检查 WSL / RKNN 环境"),
+        {QStringLiteral("environment"), QStringLiteral("check"), QStringLiteral("--target"), wslTargetName_, QStringLiteral("--format"), QStringLiteral("json")},
+        QDir::currentPath());
 }
 
 void AppController::runContractValidation() {
@@ -215,6 +268,29 @@ void AppController::runModelProbe() {
         {QStringLiteral("probe-model"), QStringLiteral("--model"), modelPath_, QStringLiteral("--contract"), contractPath_,
          QStringLiteral("--out"), outputDirectory},
         modelDirectory.absolutePath());
+}
+
+void AppController::runRknnInference() {
+    if (contractPath_.isEmpty() || modelPath_.isEmpty() || imagePath_.isEmpty()) {
+        emit bannerRequested(QStringLiteral("需要契约、RKNN 模型和测试图片"), QStringLiteral("warning"));
+        return;
+    }
+    if (QFileInfo(modelPath_).suffix().compare(QStringLiteral("rknn"), Qt::CaseInsensitive) != 0) {
+        emit bannerRequested(QStringLiteral("执行 RKNN 需要选择 .rknn 模型"), QStringLiteral("warning"));
+        return;
+    }
+    const QDir outputDirectory = QFileInfo(modelPath_).absoluteDir();
+    const QString artifact = outputDirectory.filePath(QFileInfo(modelPath_).completeBaseName() + QStringLiteral(".tensorfence-rknn.npz"));
+    QStringList arguments = {QStringLiteral("rknn-run"), QStringLiteral("--contract"), contractPath_,
+        QStringLiteral("--model"), modelPath_, QStringLiteral("--image"), imagePath_, QStringLiteral("--out"), artifact,
+        QStringLiteral("--environment-target"), wslTargetName_, QStringLiteral("--wsl-distro"), wslDistro_};
+    if (!wslCondaPath_.isEmpty()) {
+        arguments << QStringLiteral("--wsl-conda") << wslCondaPath_ << QStringLiteral("--wsl-env") << wslEnvironment_;
+    }
+    if (!wslPythonPath_.isEmpty()) {
+        arguments << QStringLiteral("--wsl-python") << wslPythonPath_;
+    }
+    runCli(QStringLiteral("WSL RKNN 推理"), arguments, outputDirectory.absolutePath());
 }
 
 void AppController::openReport() {
@@ -330,6 +406,9 @@ QString AppController::roleDisplayName(const QString &role) const {
     }
     if (role == QStringLiteral("report")) {
         return QStringLiteral("诊断报告");
+    }
+    if (role == QStringLiteral("image")) {
+        return QStringLiteral("测试图片");
     }
     return role;
 }

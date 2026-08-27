@@ -128,6 +128,17 @@ Qt should help visualize:
 
 Qt should not duplicate core business logic.
 
+### 11. Portable Target Environments
+
+TensorFence models execution locations as explicit target profiles instead of embedding host-specific paths in
+the application. Local, WSL, and SSH transports use the same CLI surface. Profiles declare compatible Python,
+RKNN Toolkit, and runtime version ranges; discovery records evidence for OS, architecture, Python, Conda,
+Toolkit, NPU device, driver, firmware/runtime availability where applicable.
+
+Discovery is read-only. Any installation, environment creation, model execution, device write, or firmware
+operation must remain opt-in. Plugin manifests are declarative, discoverable from built-in, user, and project
+locations, and mark every action as read-only or side-effectful.
+
 ## What TensorFence Can Do
 
 - validate contracts before export and deployment
@@ -167,5 +178,7 @@ Qt should not duplicate core business logic.
 ## Current MVP Boundary
 
 The artifact-first CLI MVP includes single-image inspection, ONNX probing and direct execution, draft contracts,
-canonical tensor artifact v1, and framework/ONNX/RKNN artifact comparison. Direct framework and RKNN execution,
-task-specific decode/NMS execution, non-float32 preprocessing, and a fully wired Qt workbench remain future work.
+canonical tensor artifact v1, framework/ONNX/RKNN artifact comparison, target profiles, read-only environment
+discovery, plugin manifests, and WSL RKNN simulator execution. Direct framework execution, task-specific
+decode/NMS execution, non-float32 preprocessing, SSH/board model execution, and a full board configuration UI
+remain future work.

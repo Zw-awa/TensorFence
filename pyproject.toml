@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Contract-first diagnostics for YOLO/PP -> ONNX -> RKNN export chains"
 readme = "README.md"
 license = {file = "LICENSE"}
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
   "Jinja2>=3.1",
   "numpy>=1.26,<2",
@@ -38,7 +38,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-tensorfence = ["artifacts/reports/templates/*.j2"]
+tensorfence = ["artifacts/reports/templates/*.j2", "environment/builtin_plugins/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

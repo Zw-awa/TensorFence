@@ -63,10 +63,25 @@ TabPage {
                 }
 
                 Button_ {
-                    text_: qsTr("选择 ONNX 模型")
+                    text_: qsTr("选择 ONNX / RKNN 模型")
                     width: parent.width
                     height: size_.line * 2.5
                     onClicked: qmlapp.pickFile("model")
+                }
+
+                Button_ {
+                    text_: qsTr("选择测试图片")
+                    width: parent.width
+                    height: size_.line * 2.5
+                    onClicked: qmlapp.pickFile("image")
+                }
+
+                Button_ {
+                    text_: qsTr("在 WSL 执行 RKNN")
+                    width: parent.width
+                    height: size_.line * 2.5
+                    enabled: !appController.commandRunning
+                    onClicked: appController.runRknnInference()
                 }
 
                 Button_ {
@@ -93,7 +108,8 @@ TabPage {
                         { label: qsTr("契约"), path: appController.contractPath },
                         { label: qsTr("FP16 证据"), path: appController.fp16ArtifactPath },
                         { label: qsTr("INT8 证据"), path: appController.int8ArtifactPath },
-                        { label: qsTr("ONNX 模型"), path: appController.modelPath }
+                        { label: qsTr("ONNX / RKNN 模型"), path: appController.modelPath },
+                        { label: qsTr("测试图片"), path: appController.imagePath }
                     ]
                 }
 

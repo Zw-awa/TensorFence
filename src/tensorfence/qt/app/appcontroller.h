@@ -24,6 +24,12 @@ class AppController : public QObject {
     Q_PROPERTY(QString fp16ArtifactPath READ fp16ArtifactPath NOTIFY stateChanged)
     Q_PROPERTY(QString int8ArtifactPath READ int8ArtifactPath NOTIFY stateChanged)
     Q_PROPERTY(QString reportPath READ reportPath NOTIFY stateChanged)
+    Q_PROPERTY(QString imagePath READ imagePath NOTIFY stateChanged)
+    Q_PROPERTY(QString wslDistro READ wslDistro NOTIFY stateChanged)
+    Q_PROPERTY(QString wslTargetName READ wslTargetName NOTIFY stateChanged)
+    Q_PROPERTY(QString wslCondaPath READ wslCondaPath NOTIFY stateChanged)
+    Q_PROPERTY(QString wslEnvironment READ wslEnvironment NOTIFY stateChanged)
+    Q_PROPERTY(QString wslPythonPath READ wslPythonPath NOTIFY stateChanged)
     Q_PROPERTY(QString commandOutput READ commandOutput NOTIFY commandOutputChanged)
     Q_PROPERTY(bool commandRunning READ commandRunning NOTIFY stateChanged)
 
@@ -44,6 +50,12 @@ public:
     QString fp16ArtifactPath() const;
     QString int8ArtifactPath() const;
     QString reportPath() const;
+    QString imagePath() const;
+    QString wslDistro() const;
+    QString wslTargetName() const;
+    QString wslCondaPath() const;
+    QString wslEnvironment() const;
+    QString wslPythonPath() const;
     QString commandOutput() const;
     bool commandRunning() const;
 
@@ -54,9 +66,12 @@ public:
     Q_INVOKABLE void acknowledgeAction(const QString &label);
     Q_INVOKABLE void setCliPath(const QString &path);
     Q_INVOKABLE void setSessionPath(const QString &role, const QString &path);
+    Q_INVOKABLE void setWslConfiguration(const QString &targetName, const QString &distro, const QString &condaPath, const QString &environment, const QString &pythonPath = QString());
+    Q_INVOKABLE void discoverWslEnvironment();
     Q_INVOKABLE void runContractValidation();
     Q_INVOKABLE void runCaptureValidation();
     Q_INVOKABLE void runModelProbe();
+    Q_INVOKABLE void runRknnInference();
     Q_INVOKABLE void openReport();
     Q_INVOKABLE void notifyUnavailable(const QString &feature);
 
@@ -100,6 +115,12 @@ private:
     QString fp16ArtifactPath_;
     QString int8ArtifactPath_;
     QString reportPath_;
+    QString imagePath_;
+    QString wslDistro_ = QStringLiteral("Ubuntu");
+    QString wslTargetName_ = QStringLiteral("wsl-rknn");
+    QString wslCondaPath_;
+    QString wslEnvironment_;
+    QString wslPythonPath_;
     QString commandOutput_;
     QProcess *process_ = nullptr;
 };

@@ -99,11 +99,13 @@ Window {
             if (role === "contract") {
                 openDialog.nameFilters = [qsTr("契约文件 (*.yaml *.yml)")]
             } else if (role === "model") {
-                openDialog.nameFilters = [qsTr("ONNX 模型 (*.onnx)")]
+                openDialog.nameFilters = [qsTr("模型 (*.onnx *.rknn)")]
             } else if (role === "fp16" || role === "int8") {
                 openDialog.nameFilters = [qsTr("Tensor artifact (*.npz)")]
             } else if (role === "report") {
                 openDialog.nameFilters = [qsTr("诊断报告 (*.json *.md *.html)")]
+            } else if (role === "image") {
+                openDialog.nameFilters = [qsTr("测试图片 (*.png *.jpg *.jpeg *.bmp)")]
             } else if (role === "cli") {
                 openDialog.nameFilters = [qsTr("TensorFence CLI (tensorfence.exe)")]
             } else if (role === "python") {

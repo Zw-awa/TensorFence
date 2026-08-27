@@ -20,6 +20,8 @@ from .probe_model import build_parser as build_probe_model_parser
 from .validate_capture import build_parser as build_validate_capture_parser
 from .session import build_parser as build_session_parser
 from .diagnose import build_parser as build_diagnose_parser
+from .rknn_run import build_parser as build_rknn_run_parser
+from .environment import build_parser as build_environment_parser
 
 
 def _module_status(module_name: str) -> str:
@@ -40,9 +42,9 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
         f"jinja2: {_module_status('jinja2')}",
         "",
         "Available commands: doctor, check-contract, init, inspect-image, probe-model, draft-contract, "
-        "dump-tensors, validate-capture, compare-stages.",
-        "MVP status: ONNX direct execution and artifact comparison are ready; "
-        "direct framework/RKNN execution is not implemented.",
+        "dump-tensors, validate-capture, compare-stages, session, diagnose, rknn-run, plugins, environment, target.",
+        "MVP status: ONNX direct execution, artifact comparison, and WSL RKNN simulator execution are ready; "
+        "direct framework execution is not implemented.",
     ]
     print("\n".join(lines))
     return 0
@@ -96,6 +98,8 @@ def build_parser() -> argparse.ArgumentParser:
     build_compare_stages_parser(subparsers)
     build_session_parser(subparsers)
     build_diagnose_parser(subparsers)
+    build_rknn_run_parser(subparsers)
+    build_environment_parser(subparsers)
 
     return parser
 
