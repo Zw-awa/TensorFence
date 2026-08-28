@@ -23,34 +23,34 @@ class TargetTransport:
     def __init__(self, target: TargetProfile) -> None:
         self.target = target
 
-    def run(self, command: list[str], timeout: int = 15) -> CommandResult:
+    def run(self, command: list[str], timeout: int = 15, input_text: str | None = None) -> CommandResult:
         raise NotImplementedError
 
 
 class LocalTransport(TargetTransport):
-    def run(self, command: list[str], timeout: int = 15) -> CommandResult:
+    def run(self, command: list[str], timeout: int = 15, input_text: str | None = None) -> CommandResult:
         try:
-            completed = subprocess.run(command, text=True, capture_output=True, timeout=timeout, check=False)
+            completed = subprocess.run(command, text=True, input=input_text, capture_output=True, timeout=timeout, check=False)
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise TransportError(str(exc)) from exc
         return CommandResult(command, completed.returncode, completed.stdout.strip(), completed.stderr.strip())
 
 
 class WslTransport(TargetTransport):
-    def run(self, command: list[str], timeout: int = 15) -> CommandResult:
+    def run(self, command: list[str], timeout: int = 15, input_text: str | None = None) -> CommandResult:
         distro = self.target.connection.wsl_distro
         if not distro:
             raise TransportError("WSL distro is not configured")
         invocation = ["wsl", "-d", distro, "--", "sh", "-lc", "exec " + shlex.join(command)]
         try:
-            completed = subprocess.run(invocation, text=True, capture_output=True, timeout=timeout, check=False)
+            completed = subprocess.run(invocation, text=True, input=input_text, capture_output=True, timeout=timeout, check=False)
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise TransportError(str(exc)) from exc
         return CommandResult(command, completed.returncode, completed.stdout.strip(), completed.stderr.strip())
 
 
 class SshTransport(TargetTransport):
-    def run(self, command: list[str], timeout: int = 15) -> CommandResult:
+    def run(self, command: list[str], timeout: int = 15, input_text: str | None = None) -> CommandResult:
         connection = self.target.connection
         if not connection.host:
             raise TransportError("SSH host is not configured")
@@ -60,7 +60,7 @@ class SshTransport(TargetTransport):
             invocation.extend(("-i", connection.identity_file))
         invocation.extend((endpoint, "sh", "-lc", "exec " + shlex.join(command)))
         try:
-            completed = subprocess.run(invocation, text=True, capture_output=True, timeout=timeout, check=False)
+            completed = subprocess.run(invocation, text=True, input=input_text, capture_output=True, timeout=timeout, check=False)
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise TransportError(str(exc)) from exc
         return CommandResult(command, completed.returncode, completed.stdout.strip(), completed.stderr.strip())

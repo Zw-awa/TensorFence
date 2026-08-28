@@ -10,6 +10,7 @@ class StrictModel(BaseModel):
 
 
 TransportKind = Literal["local", "wsl", "ssh"]
+PluginRuntime = Literal["external-json", "builtin-python"]
 ProfileKind = Literal["generic-linux", "rknn-host", "rk3588-board"]
 FactStatus = Literal["ready", "warning", "blocked", "unknown"]
 
@@ -92,6 +93,9 @@ class PluginAction(StrictModel):
     description: str
     command: list[str] = Field(min_length=1)
     read_only: bool = True
+    input_schema: dict[str, object] = Field(default_factory=dict)
+    output_kind: str = "text"
+    profiles: list[ProfileKind] = Field(default_factory=list)
 
 
 class PluginManifest(StrictModel):
@@ -101,3 +105,7 @@ class PluginManifest(StrictModel):
     version: str
     profiles: list[ProfileKind] = Field(default_factory=list)
     actions: list[PluginAction] = Field(default_factory=list)
+    capabilities: list[str] = Field(default_factory=list)
+    default_enabled: bool = True
+    runtime: PluginRuntime = "external-json"
+    entrypoint: str | None = None

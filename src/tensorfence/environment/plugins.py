@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from importlib.resources import files
+import hashlib
+import json
 from pathlib import Path
 
 import yaml
 from pydantic import ValidationError
 
-from .config import user_config_path
+from .config import load_plugin_states, user_config_path
 from .models import PluginManifest
 
 
@@ -50,4 +52,17 @@ def discover_plugins(project_root: str | Path | None = None) -> tuple[dict[str, 
                 plugins[manifest.id] = manifest
             except PluginError as exc:
                 errors.append(str(exc))
+    states = load_plugin_states(project_root)
+    for plugin_id, plugin in list(plugins.items()):
+        if plugin_id in states:
+            plugins[plugin_id] = plugin.model_copy(update={"default_enabled": states[plugin_id]})
     return plugins, errors
+
+
+def plugin_enabled(plugin: PluginManifest, cli_override: bool | None = None) -> bool:
+    return plugin.default_enabled if cli_override is None else cli_override
+
+
+def manifest_hash(plugin: PluginManifest) -> str:
+    encoded = json.dumps(plugin.model_dump(mode="json"), sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()

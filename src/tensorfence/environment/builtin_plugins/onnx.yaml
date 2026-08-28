@@ -1,0 +1,22 @@
+schema_version: 1
+id: tensorfence.onnx
+name: ONNX inspection and execution
+version: 1.0.0
+capabilities: [model-probe, onnxruntime]
+profiles: [generic-linux, rknn-host, rk3588-board]
+default_enabled: true
+actions:
+  - id: probe
+    description: Inspect an ONNX graph and write model facts artifacts.
+    command: ["{python}", "-m", "tensorfence", "probe-model", "--model", "{input:model}", "--out", "{input:out}", "--format", "both"]
+    input_schema: {model: {type: string, required: true}, out: {type: string, required: true}}
+    output_kind: artifact
+    profiles: [generic-linux, rknn-host]
+    read_only: true
+  - id: run
+    description: Execute an ONNX model through ONNX Runtime.
+    command: ["{python}", "-m", "tensorfence", "compare-stages", "--onnx", "{input:model}", "--contract", "{input:contract}", "--image", "{input:image}", "--out", "{input:out}"]
+    input_schema: {model: {type: string, required: true}, contract: {type: string, required: true}, image: {type: string, required: true}, out: {type: string, required: true}}
+    output_kind: comparison
+    profiles: [generic-linux, rknn-host]
+    read_only: true

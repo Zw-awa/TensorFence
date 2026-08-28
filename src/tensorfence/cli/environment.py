@@ -7,10 +7,10 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from ..environment import TargetProfile, discover_plugins, discover_target, evaluate_compatibility, load_targets, save_target
+from ..environment import PluginHostError, TargetProfile, discover_plugins, discover_target, evaluate_compatibility, load_targets, make_plugin_host, save_target
+from ..environment.config import save_plugin_state
 from ..environment.models import TargetConnection, VersionPolicy
-from ..environment.plugins import PluginError
-from ..environment.transports import TransportError, make_transport
+from ..environment.plugins import PluginError, manifest_hash, plugin_enabled
 
 
 def _emit(payload: object, output_format: str) -> None:
@@ -25,6 +25,17 @@ def _emit(payload: object, output_format: str) -> None:
                 print(f"{key}: {value}")
     else:
         print(payload)
+
+
+def _error_payload(code: str, message: str, *, target: TargetProfile | None = None, plugin: object | None = None, action: str | None = None) -> dict[str, object]:
+    payload: dict[str, object] = {"status": "error", "error": {"code": code, "message": message}}
+    if target is not None:
+        payload["target"] = target.model_dump(mode="json")
+    if plugin is not None:
+        payload["plugin"] = plugin.model_dump(mode="json") if hasattr(plugin, "model_dump") else plugin
+    if action is not None:
+        payload["action"] = action
+    return payload
 
 
 def _project_root(value: str | None) -> Path:
@@ -45,10 +56,63 @@ def _facts_payload(facts) -> dict[str, object]:
 def cmd_plugins_list(args: argparse.Namespace) -> int:
     plugins, errors = discover_plugins(_project_root(args.project_root))
     payload = {
-        "plugins": [plugin.model_dump(mode="json") for plugin in sorted(plugins.values(), key=lambda item: item.id)],
+        "plugins": [
+            plugin.model_dump(mode="json") | {"enabled": plugin_enabled(plugin)}
+            for plugin in sorted(plugins.values(), key=lambda item: item.id)
+        ],
         "errors": errors,
     }
     _emit(payload, args.format)
+    return 0 if not errors else 1
+
+
+def cmd_plugins_set(args: argparse.Namespace) -> int:
+    root = _project_root(args.project_root)
+    try:
+        plugins, errors = discover_plugins(root)
+    except PluginError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    if args.plugin not in plugins:
+        print(f"ERROR: plugin not found: {args.plugin}", file=sys.stderr)
+        return 2
+    if args.enabled is None:
+        print("ERROR: choose exactly one of --enable or --disable", file=sys.stderr)
+        return 2
+    path = save_plugin_state(args.plugin, args.enabled, None if args.global_config else root)
+    _emit({"saved": str(path), "plugin": args.plugin, "enabled": args.enabled, "plugin_errors": errors}, args.format)
+    return 0
+
+
+def cmd_plugins_inspect(args: argparse.Namespace) -> int:
+    plugins, errors = discover_plugins(_project_root(args.project_root))
+    plugin = plugins.get(args.plugin)
+    if plugin is None:
+        _emit(_error_payload("plugin_not_found", f"plugin not found: {args.plugin}"), args.format)
+        return 2
+    payload = plugin.model_dump(mode="json") | {
+        "enabled": plugin_enabled(plugin),
+        "manifest_hash": manifest_hash(plugin),
+        "errors": errors,
+    }
+    _emit(payload, args.format)
+    return 0 if not errors else 1
+
+
+def cmd_target_capabilities(args: argparse.Namespace) -> int:
+    root = _project_root(args.project_root)
+    target = _target_or_error(args.name, root)
+    if target is None:
+        return 2
+    plugins, errors = discover_plugins(root)
+    capabilities = []
+    for plugin in plugins.values():
+        if not plugin_enabled(plugin) or (plugin.profiles and target.profile not in plugin.profiles):
+            continue
+        actions = [action.id for action in plugin.actions if not action.profiles or target.profile in action.profiles]
+        if actions:
+            capabilities.append({"plugin": plugin.id, "capabilities": plugin.capabilities, "actions": actions})
+    _emit({"target": target.model_dump(mode="json"), "capabilities": sorted(capabilities, key=lambda item: item["plugin"]), "plugin_errors": errors}, args.format)
     return 0 if not errors else 1
 
 
@@ -167,35 +231,13 @@ def cmd_target_run(args: argparse.Namespace) -> int:
     except PluginError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
-    plugin = plugins.get(args.plugin)
-    if plugin is None:
-        print(f"ERROR: plugin not found: {args.plugin}", file=sys.stderr)
-        return 2
-    action = next((item for item in plugin.actions if item.id == args.action), None)
-    if action is None:
-        print(f"ERROR: action not found: {args.plugin}/{args.action}", file=sys.stderr)
-        return 2
-    if not action.read_only and not args.allow_side_effects:
-        print("ERROR: refusing side-effectful action without --allow-side-effects", file=sys.stderr)
-        return 2
-    variables = {"python": _target_python(target)}
     try:
-        command = _wrap_target_python(target, [item.format(**variables) for item in action.command])
-        result = make_transport(target).run(command, timeout=args.timeout)
-    except (KeyError, TransportError) as exc:
-        print(f"ERROR: failed to execute target action: {exc}", file=sys.stderr)
+        result = make_plugin_host(plugins).execute(target, args.plugin, args.action, input_args=args.input, input_json=args.input_json, timeout=args.timeout, enable_override=args.enable_plugin, allow_side_effects=args.allow_side_effects)
+    except PluginHostError as exc:
+        _emit(_error_payload(exc.code, exc.message, target=target, action=args.action), args.format)
         return 2
-    payload = {
-        "target": target.name,
-        "plugin": plugin.id,
-        "action": action.id,
-        "read_only": action.read_only,
-        "command": command,
-        "returncode": result.returncode,
-        "stdout": result.stdout,
-        "stderr": result.stderr,
-        "plugin_errors": errors,
-    }
+    payload = result.envelope()
+    payload["plugin_errors"] = errors
     _emit(payload, args.format)
     return result.returncode
 
@@ -207,6 +249,20 @@ def build_parser(subparsers) -> None:
     plugin_list.add_argument("--project-root")
     plugin_list.add_argument("--format", choices=("text", "json"), default="text")
     plugin_list.set_defaults(func=cmd_plugins_list)
+    plugin_set = plugin_subparsers.add_parser("set", help="enable or disable a plugin")
+    plugin_set.add_argument("plugin")
+    plugin_set.add_argument("--enable", dest="enabled", action="store_true")
+    plugin_set.add_argument("--disable", dest="enabled", action="store_false")
+    plugin_set.set_defaults(enabled=None)
+    plugin_set.add_argument("--project-root")
+    plugin_set.add_argument("--global", dest="global_config", action="store_true")
+    plugin_set.add_argument("--format", choices=("text", "json"), default="text")
+    plugin_set.set_defaults(func=cmd_plugins_set)
+    plugin_inspect = plugin_subparsers.add_parser("inspect", help="inspect one plugin manifest")
+    plugin_inspect.add_argument("plugin")
+    plugin_inspect.add_argument("--project-root")
+    plugin_inspect.add_argument("--format", choices=("text", "json"), default="text")
+    plugin_inspect.set_defaults(func=cmd_plugins_inspect)
 
     environment = subparsers.add_parser("environment", help="discover and check a configured target")
     environment_subparsers = environment.add_subparsers(dest="environment_command", required=True)
@@ -231,6 +287,11 @@ def build_parser(subparsers) -> None:
     target_show.add_argument("--project-root")
     target_show.add_argument("--format", choices=("text", "json"), default="text")
     target_show.set_defaults(func=cmd_target_show)
+    target_capabilities = target_subparsers.add_parser("capabilities", help="list enabled plugin actions for a target")
+    target_capabilities.add_argument("name")
+    target_capabilities.add_argument("--project-root")
+    target_capabilities.add_argument("--format", choices=("text", "json"), default="text")
+    target_capabilities.set_defaults(func=cmd_target_capabilities)
     upsert = target_subparsers.add_parser("upsert", help="create or update a target profile")
     upsert.add_argument("--name", required=True)
     upsert.add_argument("--profile", choices=("generic-linux", "rknn-host", "rk3588-board"))
@@ -258,6 +319,11 @@ def build_parser(subparsers) -> None:
     run.add_argument("--action", default="doctor")
     run.add_argument("--timeout", type=int, default=30)
     run.add_argument("--allow-side-effects", action="store_true")
+    run.add_argument("--enable-plugin", dest="enable_plugin", action="store_true")
+    run.add_argument("--disable-plugin", dest="enable_plugin", action="store_false")
+    run.set_defaults(enable_plugin=None)
+    run.add_argument("--input", action="append", default=[])
+    run.add_argument("--input-json")
     run.add_argument("--project-root")
     run.add_argument("--format", choices=("text", "json"), default="text")
     run.set_defaults(func=cmd_target_run)

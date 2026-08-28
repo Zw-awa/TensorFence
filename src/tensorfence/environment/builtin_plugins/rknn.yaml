@@ -1,0 +1,15 @@
+schema_version: 1
+id: tensorfence.rknn
+name: RKNN Toolkit2 inference
+version: 1.0.0
+capabilities: [rknn-simulator, rknn-runtime]
+profiles: [rknn-host, rk3588-board]
+default_enabled: true
+actions:
+  - id: run
+    description: Execute an RKNN model and write a tensor artifact.
+    command: ["{python}", "-m", "tensorfence", "_rknn-exec", "--contract", "{input:contract}", "--model", "{input:model}", "--image", "{input:image}", "--out", "{input:out}"]
+    input_schema: {contract: {type: string, required: true}, model: {type: string, required: true}, image: {type: string, required: true}, out: {type: string, required: true}}
+    output_kind: tensor-artifact
+    profiles: [rknn-host, rk3588-board]
+    read_only: true

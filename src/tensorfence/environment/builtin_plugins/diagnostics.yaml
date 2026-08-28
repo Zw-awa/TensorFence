@@ -1,0 +1,15 @@
+schema_version: 1
+id: tensorfence.diagnostics
+name: TensorFence comparison diagnostics
+version: 1.0.0
+capabilities: [compare, diagnose, artifact]
+profiles: [generic-linux, rknn-host, rk3588-board]
+default_enabled: true
+actions:
+  - id: diagnose
+    description: Compare model stages and emit diagnostic recommendations.
+    command: ["{python}", "-m", "tensorfence", "diagnose", "--contract", "{input:contract}", "--image", "{input:image}", "--out", "{input:out}", "--format", "json"]
+    input_schema: {contract: {type: string, required: true}, image: {type: string, required: true}, out: {type: string, required: true}}
+    output_kind: diagnosis
+    profiles: [generic-linux, rknn-host]
+    read_only: true

@@ -2,6 +2,7 @@ schema_version: 1
 id: tensorfence.core
 name: TensorFence core environment actions
 version: 1.0.0
+capabilities: [environment-doctor]
 profiles:
   - generic-linux
   - rknn-host

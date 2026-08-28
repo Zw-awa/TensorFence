@@ -3,7 +3,8 @@
 from .config import TargetConfigError, load_targets, save_target, user_config_path
 from .discovery import discover_target, evaluate_compatibility
 from .models import EnvironmentFacts, TargetProfile
-from .plugins import discover_plugins, load_builtin_plugins
+from .plugins import discover_plugins, load_builtin_plugins, manifest_hash, plugin_enabled
+from .host import ExecutionContext, PluginHost, PluginHostError, PluginResult, make_plugin_host
 
 __all__ = [
     "EnvironmentFacts",
@@ -13,6 +14,13 @@ __all__ = [
     "discover_target",
     "evaluate_compatibility",
     "load_builtin_plugins",
+    "manifest_hash",
+    "plugin_enabled",
+    "ExecutionContext",
+    "PluginHost",
+    "PluginHostError",
+    "PluginResult",
+    "make_plugin_host",
     "load_targets",
     "save_target",
     "user_config_path",
