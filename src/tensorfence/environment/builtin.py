@@ -8,6 +8,7 @@ from typing import Any
 
 from .host import ExecutionContext, PluginHost
 from .models import Fact
+from ..artifacts import ArtifactStore, ArtifactReader, ArtifactWriter, ArtifactValidator
 
 
 def _module_status(module_name: str) -> str:
@@ -28,4 +29,17 @@ def core_doctor(context: ExecutionContext) -> dict[str, Any]:
 
 def register_builtin_handlers(host: PluginHost) -> PluginHost:
     host.register("tensorfence.core", "doctor", core_doctor)
+    host.register("tensorfence.environment", "discover", core_doctor)
+    host.register("tensorfence.environment", "check", core_doctor)
+    if host.services.get("artifact.store") is None:
+        store = ArtifactStore()
+        host.services.register("artifact.store", store)
+        host.services.register("artifact.reader", ArtifactReader(store))
+        host.services.register("artifact.writer", ArtifactWriter(store))
+        host.services.register("artifact.validator", ArtifactValidator(store))
+    return host
+
+
+def register_artifact_handlers(host: PluginHost) -> PluginHost:
+    register_builtin_handlers(host)
     return host

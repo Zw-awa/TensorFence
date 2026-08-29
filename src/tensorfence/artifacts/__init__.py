@@ -12,6 +12,7 @@ from .tensor_artifact import (
     load_tensor_artifact,
     write_tensor_artifact,
 )
+from .service import ArtifactPathError, ArtifactReader, ArtifactStore, ArtifactValidator, ArtifactWriter
 
 __all__ = [
     "LoadedTensorArtifact",
@@ -24,4 +25,9 @@ __all__ = [
     "create_tensor_artifact_manifest",
     "load_tensor_artifact",
     "write_tensor_artifact",
+    "ArtifactPathError",
+    "ArtifactReader",
+    "ArtifactStore",
+    "ArtifactValidator",
+    "ArtifactWriter",
 ]

@@ -1,0 +1,13 @@
+schema_version: 1
+id: tensorfence.diagnose
+name: TensorFence diagnosis
+version: 1.0.0
+runtime: external-json
+requires: [artifact.reader]
+capabilities: [diagnose]
+profiles: [offline-analysis, onnx-host, rknn-host, rk3588-board, generic-linux]
+actions:
+  - id: run
+    description: Diagnose stage drift from artifacts.
+    command: ["{python}", "-m", "tensorfence", "diagnose", "--help"]
+    output_kind: diagnosis

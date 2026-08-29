@@ -11,6 +11,7 @@ from ..environment import PluginHostError, TargetProfile, discover_plugins, disc
 from ..environment.config import save_plugin_state
 from ..environment.models import TargetConnection, VersionPolicy
 from ..environment.plugins import PluginError, manifest_hash, plugin_enabled
+from ..environment.profiles import BUILTIN_PROFILES, ProfileError, resolve_profile, save_profile_use
 
 
 def _emit(payload: object, output_format: str) -> None:
@@ -28,7 +29,7 @@ def _emit(payload: object, output_format: str) -> None:
 
 
 def _error_payload(code: str, message: str, *, target: TargetProfile | None = None, plugin: object | None = None, action: str | None = None) -> dict[str, object]:
-    payload: dict[str, object] = {"status": "error", "error": {"code": code, "message": message}}
+    payload: dict[str, object] = {"status": "blocked", "error": {"code": code, "message": message}}
     if target is not None:
         payload["target"] = target.model_dump(mode="json")
     if plugin is not None:
@@ -81,6 +82,46 @@ def cmd_plugins_set(args: argparse.Namespace) -> int:
         return 2
     path = save_plugin_state(args.plugin, args.enabled, None if args.global_config else root)
     _emit({"saved": str(path), "plugin": args.plugin, "enabled": args.enabled, "plugin_errors": errors}, args.format)
+    return 0
+
+
+def cmd_profile_list(args: argparse.Namespace) -> int:
+    _emit({"profiles": [{"name": name, **value} for name, value in sorted(BUILTIN_PROFILES.items())]}, args.format)
+    return 0
+
+
+def cmd_profile_show(args: argparse.Namespace) -> int:
+    try:
+        profile = resolve_profile(args.name, _project_root(args.project_root))
+    except ProfileError as exc:
+        _emit(_error_payload("invalid_profile", str(exc)), args.format)
+        return 2
+    _emit({"name": profile.name, "plugins": profile.plugins, "config": profile.config}, args.format)
+    return 0
+
+
+def cmd_profile_validate(args: argparse.Namespace) -> int:
+    root = _project_root(args.project_root)
+    try:
+        profile = resolve_profile(args.name, root)
+        plugins, errors = discover_plugins(root)
+        unknown = sorted(set(profile.plugins) - set(plugins))
+        if unknown:
+            raise ProfileError(f"profile references unknown plugins: {unknown}")
+    except (ProfileError, PluginError) as exc:
+        _emit(_error_payload("invalid_profile", str(exc)), args.format)
+        return 2
+    _emit({"valid": not errors, "name": profile.name, "plugin_errors": errors}, args.format)
+    return 0 if not errors else 1
+
+
+def cmd_profile_use(args: argparse.Namespace) -> int:
+    try:
+        path = save_profile_use(args.name, _project_root(args.project_root) if (args.project or args.project_root) else None)
+    except ProfileError as exc:
+        _emit(_error_payload("invalid_profile", str(exc)), args.format)
+        return 2
+    _emit({"profile": args.name, "saved": str(path)}, args.format)
     return 0
 
 
@@ -155,6 +196,9 @@ def _updated_target(args: argparse.Namespace, current: TargetProfile | None) -> 
     requested_profile = args.profile or (current.profile if current else "generic-linux")
     if current is None:
         default_policy = {
+            "default": VersionPolicy(python=">=3.10"),
+            "offline-analysis": VersionPolicy(python=">=3.10"),
+            "onnx-host": VersionPolicy(python=">=3.10"),
             "generic-linux": VersionPolicy(python=">=3.10"),
             "rknn-host": VersionPolicy(python=">=3.10", rknn_toolkit=">=2.3.2,<2.4"),
             "rk3588-board": VersionPolicy(python=">=3.10"),
@@ -258,6 +302,13 @@ def build_parser(subparsers) -> None:
     plugin_set.add_argument("--global", dest="global_config", action="store_true")
     plugin_set.add_argument("--format", choices=("text", "json"), default="text")
     plugin_set.set_defaults(func=cmd_plugins_set)
+    for alias, enabled in (("enable", True), ("disable", False)):
+        command = plugin_subparsers.add_parser(alias, help=f"{alias} a plugin")
+        command.add_argument("plugin")
+        command.add_argument("--project-root")
+        command.add_argument("--global", dest="global_config", action="store_true")
+        command.add_argument("--format", choices=("text", "json"), default="text")
+        command.set_defaults(func=cmd_plugins_set, enabled=enabled)
     plugin_inspect = plugin_subparsers.add_parser("inspect", help="inspect one plugin manifest")
     plugin_inspect.add_argument("plugin")
     plugin_inspect.add_argument("--project-root")
@@ -294,7 +345,7 @@ def build_parser(subparsers) -> None:
     target_capabilities.set_defaults(func=cmd_target_capabilities)
     upsert = target_subparsers.add_parser("upsert", help="create or update a target profile")
     upsert.add_argument("--name", required=True)
-    upsert.add_argument("--profile", choices=("generic-linux", "rknn-host", "rk3588-board"))
+    upsert.add_argument("--profile", choices=("default", "offline-analysis", "onnx-host", "rknn-host", "rk3588-board", "generic-linux"))
     upsert.add_argument("--transport", choices=("local", "wsl", "ssh"))
     upsert.add_argument("--wsl-distro")
     upsert.add_argument("--host")
@@ -327,3 +378,21 @@ def build_parser(subparsers) -> None:
     run.add_argument("--project-root")
     run.add_argument("--format", choices=("text", "json"), default="text")
     run.set_defaults(func=cmd_target_run)
+
+    profile = subparsers.add_parser("profile", help="manage reproducible plugin profiles")
+    profile_subparsers = profile.add_subparsers(dest="profile_command", required=True)
+    profile_list = profile_subparsers.add_parser("list")
+    profile_list.add_argument("--format", choices=("text", "json"), default="text")
+    profile_list.set_defaults(func=cmd_profile_list)
+    for name, handler in (("show", cmd_profile_show), ("validate", cmd_profile_validate)):
+        command = profile_subparsers.add_parser(name)
+        command.add_argument("name")
+        command.add_argument("--project-root")
+        command.add_argument("--format", choices=("text", "json"), default="text")
+        command.set_defaults(func=handler)
+    profile_use = profile_subparsers.add_parser("use")
+    profile_use.add_argument("name")
+    profile_use.add_argument("--project-root")
+    profile_use.add_argument("--project", action="store_true")
+    profile_use.add_argument("--format", choices=("text", "json"), default="text")
+    profile_use.set_defaults(func=cmd_profile_use)

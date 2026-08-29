@@ -11,7 +11,7 @@ class StrictModel(BaseModel):
 
 TransportKind = Literal["local", "wsl", "ssh"]
 PluginRuntime = Literal["external-json", "builtin-python"]
-ProfileKind = Literal["generic-linux", "rknn-host", "rk3588-board"]
+ProfileKind = Literal["default", "offline-analysis", "onnx-host", "rknn-host", "rk3588-board", "generic-linux"]
 FactStatus = Literal["ready", "warning", "blocked", "unknown"]
 
 
@@ -91,11 +91,12 @@ class EnvironmentFacts(StrictModel):
 class PluginAction(StrictModel):
     id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
     description: str
-    command: list[str] = Field(min_length=1)
+    command: list[str] = Field(default_factory=list)
     read_only: bool = True
     input_schema: dict[str, object] = Field(default_factory=dict)
     output_kind: str = "text"
     profiles: list[ProfileKind] = Field(default_factory=list)
+    side_effects: list[str] = Field(default_factory=list)
 
 
 class PluginManifest(StrictModel):
@@ -109,3 +110,8 @@ class PluginManifest(StrictModel):
     default_enabled: bool = True
     runtime: PluginRuntime = "external-json"
     entrypoint: str | None = None
+    requires: list[str] = Field(default_factory=list)
+    provides: list[str] = Field(default_factory=list)
+    config: dict[str, object] = Field(default_factory=dict)
+    installed: bool = True
+    enabled: bool | None = None

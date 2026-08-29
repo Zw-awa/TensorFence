@@ -1,0 +1,13 @@
+schema_version: 1
+id: tensorfence.compare
+name: TensorFence stage comparison
+version: 1.0.0
+runtime: external-json
+requires: [artifact.reader, artifact.writer]
+capabilities: [compare]
+profiles: [offline-analysis, onnx-host, rknn-host, rk3588-board, generic-linux]
+actions:
+  - id: stages
+    description: Compare captured stage artifacts.
+    command: ["{python}", "-m", "tensorfence", "compare-stages", "--help"]
+    output_kind: comparison

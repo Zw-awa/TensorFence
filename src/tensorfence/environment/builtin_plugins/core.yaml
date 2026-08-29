@@ -2,6 +2,8 @@ schema_version: 1
 id: tensorfence.core
 name: TensorFence core environment actions
 version: 1.0.0
+runtime: builtin-python
+entrypoint: tensorfence.environment.builtin:register_builtin_handlers
 capabilities: [environment-doctor]
 profiles:
   - generic-linux

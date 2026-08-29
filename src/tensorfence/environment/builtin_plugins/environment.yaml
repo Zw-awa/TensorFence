@@ -1,0 +1,15 @@
+schema_version: 1
+id: tensorfence.environment
+name: TensorFence environment discovery
+version: 1.0.0
+runtime: builtin-python
+entrypoint: tensorfence.environment.builtin:register_builtin_handlers
+capabilities: [environment-discover, environment-check]
+profiles: [default, offline-analysis, onnx-host, rknn-host, rk3588-board, generic-linux]
+actions:
+  - id: discover
+    description: Discover target environment facts.
+    output_kind: facts
+  - id: check
+    description: Check target environment compatibility.
+    output_kind: facts
