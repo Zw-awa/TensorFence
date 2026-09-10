@@ -6,8 +6,11 @@ dependencies:
   - pip
   - jinja2>=3.1
   - numpy>=1.26,<2
-  - onnx>=1.16.1
+  # RKNN-Toolkit2 2.3.2 is compatible with the protobuf 4.x API and
+  # ONNX 1.18.x; newer ONNX wheels require protobuf.runtime_version.
+  - onnx>=1.16.1,<1.19
   - onnxruntime>=1.17
+  - protobuf>=4.25,<5
   - pillow>=10.0
   - pyyaml>=6.0
   - pydantic>=2.7
