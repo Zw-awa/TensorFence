@@ -7,7 +7,7 @@ targets:
       wsl_distro: Ubuntu
       python: python
       conda_path: /home/your-user/miniforge3/bin/conda
-      conda_env: yolo-rknn
+      conda_env: tensorfence-wsl
     plugin_ids: [tensorfence.core]
     version_policy:
       python: ">=3.10"
