@@ -37,5 +37,6 @@ def run_framework_outputs(
     expected_names: list[str],
 ) -> tuple[dict[str, np.ndarray], list[str]]:
     raise FrameworkAdapterError(
-        "direct framework execution is not implemented in v1; provide --framework-out with an .npz artifact"
+        "direct framework execution is not implemented yet; use --framework-out with a framework-stage "
+        ".npz artifact (or call compare_stages with a custom runner integration)"
     )

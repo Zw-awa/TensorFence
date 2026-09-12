@@ -44,7 +44,7 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
         "Available commands: doctor, check-contract, init, inspect-image, probe-model, draft-contract, "
         "dump-tensors, validate-capture, compare-stages, session, diagnose, rknn-run, plugins, environment, target.",
         "MVP status: ONNX direct execution, artifact comparison, and WSL RKNN simulator execution are ready; "
-        "direct framework execution is not implemented.",
+        "direct framework execution is not implemented yet; use --framework-out with a framework-stage .npz artifact.",
     ]
     print("\n".join(lines))
     return 0
