@@ -48,6 +48,15 @@ class ContractTests(unittest.TestCase):
 
         self.assertIn("score_thresold", str(raised.exception))
 
+    def test_contract_rejects_non_positive_resize_target(self) -> None:
+        source = (ROOT / "examples" / "detection_contract.yaml").read_text(encoding="utf-8")
+        source = source.replace("target_size: [640, 640]", "target_size: [0, 640]")
+
+        with self.assertRaises(ContractError) as raised:
+            load_contract_from_text(source)
+
+        self.assertIn("resize.target_size values must be positive", str(raised.exception))
+
     def test_custom_nc_contract_is_not_forced_to_detection_shape_or_nms(self) -> None:
         source = """
 name: custom-vector

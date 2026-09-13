@@ -21,6 +21,12 @@ class ResizeSpec(StrictBaseModel):
     interpolation: Literal["nearest", "bilinear", "area", "bicubic"] = "bilinear"
     keep_aspect_ratio: bool = True
 
+    @model_validator(mode="after")
+    def _validate_target_size(self) -> "ResizeSpec":
+        if any(size <= 0 for size in self.target_size):
+            raise ValueError("resize.target_size values must be positive")
+        return self
+
 
 class NormalizeSpec(StrictBaseModel):
     scale: float | list[float] = 1.0
