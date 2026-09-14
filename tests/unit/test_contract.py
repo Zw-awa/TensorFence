@@ -57,6 +57,14 @@ class ContractTests(unittest.TestCase):
 
         self.assertIn("resize.target_size values must be positive", str(raised.exception))
 
+    def test_validation_rejects_resize_target_shape_mismatch(self) -> None:
+        contract = load_contract(ROOT / "examples" / "detection_contract.yaml")
+        contract.preprocess.resize.target_size = [320, 320]
+
+        issues = validate_contract(contract)
+
+        self.assertTrue(any(issue.code == "preprocess.resize.shape_mismatch" for issue in issues))
+
     def test_custom_nc_contract_is_not_forced_to_detection_shape_or_nms(self) -> None:
         source = """
 name: custom-vector
