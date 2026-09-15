@@ -85,20 +85,6 @@ def validate_contract(contract: ModelContract) -> list[ContractIssue]:
             )
         )
 
-    spatial_dims = _spatial_dims(contract)
-    if spatial_dims is not None:
-        target_height, target_width = contract.preprocess.resize.target_size[1], contract.preprocess.resize.target_size[0]
-        expected_height, expected_width = spatial_dims
-        if (target_height, target_width) != (expected_height, expected_width):
-            issues.append(
-                _error(
-                    "preprocess.resize.shape_mismatch",
-                    "preprocess.resize.target_size",
-                    f"resize target {target_width}x{target_height} must match input spatial shape "
-                    f"{expected_width}x{expected_height}",
-                )
-            )
-
     if contract.task == "detection" and not image_layout:
         issues.append(
             _error(

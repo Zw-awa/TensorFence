@@ -63,7 +63,7 @@ class ContractTests(unittest.TestCase):
 
         issues = validate_contract(contract)
 
-        self.assertTrue(any(issue.code == "preprocess.resize.shape_mismatch" for issue in issues))
+        self.assertTrue(any(issue.code == "preprocess.resize.mismatch" for issue in issues))
 
     def test_custom_nc_contract_is_not_forced_to_detection_shape_or_nms(self) -> None:
         source = """
