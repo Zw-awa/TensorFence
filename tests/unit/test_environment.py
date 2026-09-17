@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import tempfile
+import shlex
+import subprocess
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -9,7 +11,7 @@ from tensorfence.environment.config import load_targets, save_target
 from tensorfence.environment.discovery import discover_target, evaluate_compatibility
 from tensorfence.environment.models import EnvironmentFacts, Fact, TargetProfile
 from tensorfence.environment.plugins import discover_plugins
-from tensorfence.environment.transports import CommandResult, TargetTransport
+from tensorfence.environment.transports import CommandResult, SshTransport, TargetTransport
 
 
 class FakeTransport(TargetTransport):
@@ -28,6 +30,29 @@ class FakeTransport(TargetTransport):
 
 
 class EnvironmentTests(unittest.TestCase):
+    def test_ssh_preserves_remote_command_arguments(self) -> None:
+        target = TargetProfile(
+            name="board", transport="ssh", connection={"host": "board", "user": "tester"}
+        )
+        commands = [
+            ["python", "--version"],
+            ["/opt/my env/bin/python", "-c", "print('hello world')", "$(echo unsafe)", "a;b", ""],
+        ]
+        for command in commands:
+            with self.subTest(command=command):
+                with patch("tensorfence.environment.transports.subprocess.run") as run:
+                    run.return_value = subprocess.CompletedProcess([], 0, "ok\n", "")
+                    result = SshTransport(target).run(command, input_text="payload", timeout=7)
+                invocation = run.call_args.args[0]
+                self.assertEqual(invocation[:4], ["ssh", "-p", "22", "tester@board"])
+                remote_shell = shlex.split(" ".join(invocation[4:]))
+                self.assertEqual(remote_shell[:2], ["sh", "-lc"])
+                self.assertEqual(len(remote_shell), 3)
+                self.assertEqual(shlex.split(remote_shell[2]), ["exec", *command])
+                self.assertEqual(run.call_args.kwargs["input"], "payload")
+                self.assertEqual(run.call_args.kwargs["timeout"], 7)
+                self.assertEqual(result.stdout, "ok")
+
     def test_project_targets_override_global_targets(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

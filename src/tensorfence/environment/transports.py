@@ -75,7 +75,9 @@ class SshTransport(TargetTransport):
         invocation = ["ssh", "-p", str(connection.port)]
         if connection.identity_file:
             invocation.extend(("-i", connection.identity_file))
-        invocation.extend((endpoint, "sh", "-lc", "exec " + shlex.join(command)))
+        # SSH joins remote arguments before passing them to the remote login shell.
+        remote_command = shlex.join(["sh", "-lc", "exec " + shlex.join(command)])
+        invocation.extend((endpoint, remote_command))
         try:
             completed = subprocess.run(invocation, text=True, input=input_text, capture_output=True, timeout=timeout, check=False)
         except subprocess.TimeoutExpired as exc:
