@@ -38,8 +38,11 @@ def run_rknn_model(
 ) -> tuple[dict[str, np.ndarray], list[str]]:
     try:
         from rknn.api import RKNN
-    except ModuleNotFoundError as exc:
-        raise RknnAdapterError("RKNN Toolkit2 is not installed; run this command through `tensorfence rknn-run`") from exc
+    except ImportError as exc:
+        raise RknnAdapterError(
+            "RKNN Toolkit2 could not be imported; run this command through `tensorfence rknn-run` "
+            f"and check its WSL environment ({exc})"
+        ) from exc
     source = Path(model_path)
     if not source.is_file():
         raise RknnAdapterError(f"RKNN model does not exist: {source}")
