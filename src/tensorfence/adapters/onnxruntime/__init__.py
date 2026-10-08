@@ -14,9 +14,10 @@ class OnnxRuntimeAdapterError(RuntimeError):
 def _import_onnxruntime():
     try:
         import onnxruntime as ort
-    except ModuleNotFoundError as exc:
+    except ImportError as exc:
         raise OnnxRuntimeAdapterError(
-            "onnxruntime is not installed. Install the tensorfence environment update or provide --onnx-out."
+            "onnxruntime could not be imported. Install the tensorfence environment update or provide "
+            f"--onnx-out ({exc})"
         ) from exc
     return ort
 
