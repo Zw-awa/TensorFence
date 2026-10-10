@@ -63,6 +63,32 @@ TensorFence 想回答更难的那句：
 
 ## 快速开始
 
+### 在正确的 Conda 环境中运行测试
+
+新开的终端可能默认处于 `base`，所以不要用裸 `python -m pytest` 判断项目依赖是否缺失。在 Windows 仓库根目录运行：
+
+```powershell
+.\tools\test.ps1
+```
+
+脚本默认选择 `tensorfence` 环境，先显示实际 Python 路径并检查 `jinja2`、`onnxruntime` 和 `pytest`，再运行测试。若本机环境名不同，可传 `-CondaEnv <环境名>`。
+
+WSL 环境单独选择，不会自动探测或猜测个人路径。把发行版、Conda 路径和环境名保存在 Git 忽略的 `.tensorfence/targets.yaml`，然后显式运行：
+
+```powershell
+.\tools\test.ps1 -Target wsl -WslDistro <发行版> -WslCondaPath <WSL内Conda路径> -CondaEnv <环境名>
+```
+
+这样 Windows 开发依赖与 WSL/RKNN 依赖保持独立；克隆者只需在自己的本地配置中填写实际值。
+
+如果不确定某台机器的状态，可以只做能力探测，不运行测试：
+
+```powershell
+.\tools\test.ps1 -CheckEnvironments
+```
+
+它会分别报告 Windows 和 WSL 的 Conda 状态。四种组合都按独立状态处理：两边都没有时分别提示安装；只有一边有时只允许运行对应一侧；两边都有时仍按显式目标选择，不会把 Windows 环境当作 WSL 环境使用，反之亦然。
+
 ```bash
 conda env create -f environment.yml
 conda activate tensorfence

@@ -123,6 +123,8 @@ conda clean -i
 
 ## 4. 创建 Windows 版 TensorFence 环境
 
+Windows 和 WSL 的 Conda 是两个独立安装。可以只安装其中一个：只做本机诊断时只需要 Windows Conda；做 RKNN 时才需要 WSL Conda。项目不会假设两边同时存在，也不会自动跨环境安装依赖。
+
 在 TensorFence 仓库根目录打开 PowerShell，然后运行：
 
 ```powershell

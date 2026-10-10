@@ -20,6 +20,18 @@ Read these in order:
 9. `src/tensorfence/core/templates.py`
 10. `tests/unit/test_contract.py`
 
+## 1.1 Mandatory Environment Check
+
+Before running Python, pytest, packaging, CLI commands, or diagnosing a missing dependency, agents must run:
+
+```powershell
+.\tools\test.ps1 -CheckEnvironments
+```
+
+Use the reported target explicitly. For Windows, run through `.\tools\test.ps1` so the repository Conda environment is selected. For WSL, use `-Target wsl` with the distro, Conda path, and environment name from the local ignored `.tensorfence/targets.yaml`. Never use bare `python`, `pip`, or `pytest` as evidence about project dependencies before this check.
+
+The Windows and WSL environments are independent. Do not infer that one exists because the other exists, and do not treat a missing Conda command in one target as a project-wide dependency failure. If the check reports `missing`, `uninitialized`, `environment-missing`, `unavailable`, or `not-configured`, report that target state and give its environment-specific setup command. If the check itself fails because of sandbox access, retry read-only environment discovery outside the sandbox before concluding that Conda or WSL is unavailable.
+
 ## 2. Ask These Questions In Order
 
 ### Question 1: What kind of work is this?
@@ -89,6 +101,7 @@ If the user chooses D or does not know:
 ## 4. Working Rules
 
 - Do not guess input layout, color order, resize mode, or activation placement.
+- Do not run bare `python`, `pip`, or `pytest` before the mandatory environment check; a shell may be in Conda `base` or another unrelated environment.
 - Do not add runtime logic into contract validation files.
 - Prefer changing docs and validation before adding new adapters.
 - If a user only gives a repo link, start with README, AGENT, and the sample contract.
@@ -108,8 +121,16 @@ Codex environments automatically use the agent-safe Qt path. Do not call `qt-run
 
 ## Useful Commands
 
+Always run repository tests through `tools/test.ps1` on Windows. A new shell may start in `base`, so bare `python` can report dependencies missing from the wrong interpreter. The script selects the named Conda environment, prints its Python executable, and checks test dependencies before running.
+
+```powershell
+.\tools\test.ps1
+.\tools\test.ps1 -Target wsl -WslDistro <local-distro> -WslCondaPath <linux-conda-path> -CondaEnv <local-env-name>
+```
+
+WSL values are host-specific and belong in the ignored `.tensorfence/targets.yaml`; never copy a developer's paths into tracked files. Read that file to select values. If WSL access fails in a sandbox, retry the read-only check outside it before concluding WSL is unavailable.
+
 ```bash
-python -m unittest discover -s tests
-python -c "import sys; sys.path.insert(0, 'src'); from tensorfence.cli import main; raise SystemExit(main(['doctor']))"
-python -c "import sys; sys.path.insert(0, 'src'); from tensorfence.cli import main; raise SystemExit(main(['check-contract', 'examples/detection_contract.yaml']))"
+conda run -n tensorfence python -m tensorfence doctor
+conda run -n tensorfence python -m tensorfence check-contract examples/detection_contract.yaml
 ```
